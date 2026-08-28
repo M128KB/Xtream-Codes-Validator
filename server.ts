@@ -1,0 +1,314 @@
+import express from 'express';
+import path from 'path';
+import fs from 'fs';
+import { createServer as createViteServer } from 'vite';
+import {
+  getAccounts,
+  saveAccountToDb,
+  deleteAccountById,
+  deleteAccountsBulk,
+  clearAllAccounts,
+  getDatabaseStats,
+  getDatabasePath
+} from './server/db.js';
+import {
+  parseXtreamText,
+  validateXtreamAccount,
+  parseSingleLine
+} from './server/validator.js';
+import {
+  executePythonValidation,
+  getPythonSourceCode,
+  generateExportData
+} from './server/python_bridge.js';
+
+async function startServer() {
+  const app = express();
+  const PORT = 3000;
+
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+  // API Routes
+  app.get('/api/health', (req, res) => {
+    res.json({ status: 'ok', time: new Date().toISOString() });
+  });
+
+  // 1. Text Parsing
+  app.post('/api/parse', (req, res) => {
+    try {
+      const { text } = req.body;
+      if (!text || typeof text !== 'string') {
+        return res.status(400).json({ error: 'Text input is required' });
+      }
+      const result = parseXtreamText(text);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // 2. Single Account Live Validation
+  app.post('/api/validate-single', async (req, res) => {
+    try {
+      const { domain, username, password, timeout, userAgent, saveToDb } = req.body;
+      if (!domain || !username || !password) {
+        return res.status(400).json({ error: 'Domain, username and password are required' });
+      }
+
+      const result = await validateXtreamAccount(domain, username, password, {
+        timeout: timeout ? Number(timeout) : 8,
+        userAgent
+      });
+
+      let insertedId = null;
+      if (saveToDb || result.is_valid) {
+        insertedId = saveAccountToDb(result);
+      }
+
+      res.json({ ...result, dbId: insertedId });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // 3. Batch Account Validation
+  app.post('/api/validate-batch', async (req, res) => {
+    try {
+      const { accounts, concurrency = 10, timeout = 8, userAgent, autoSave = true, saveOnlyValid = false } = req.body;
+      if (!Array.isArray(accounts) || accounts.length === 0) {
+        return res.status(400).json({ error: 'Accounts array is required' });
+      }
+
+      const limit = Math.max(1, Math.min(50, Number(concurrency)));
+      const timeoutSec = Math.max(2, Math.min(30, Number(timeout)));
+      const results: any[] = [];
+
+      // Concurrency worker queue
+      let currentIndex = 0;
+      const total = accounts.length;
+
+      async function worker() {
+        while (currentIndex < total) {
+          const index = currentIndex++;
+          const acc = accounts[index];
+          if (!acc || !acc.domain || !acc.username || !acc.password) continue;
+
+          try {
+            const valResult = await validateXtreamAccount(acc.domain, acc.username, acc.password, {
+              timeout: timeoutSec,
+              userAgent
+            });
+
+            if (autoSave) {
+              if (valResult.is_valid || !saveOnlyValid) {
+                saveAccountToDb(valResult);
+              }
+            }
+
+            results.push({
+              ...valResult,
+              originalIndex: index
+            });
+          } catch (err: any) {
+            results.push({
+              domain: acc.domain,
+              username: acc.username,
+              password: acc.password,
+              status: 'Error',
+              is_valid: false,
+              response_time_ms: 0,
+              error: err.message,
+              originalIndex: index
+            });
+          }
+        }
+      }
+
+      const workers = Array.from({ length: Math.min(limit, total) }, () => worker());
+      await Promise.all(workers);
+
+      // Sort results by original order
+      results.sort((a, b) => a.originalIndex - b.originalIndex);
+
+      res.json({
+        total: results.length,
+        valid: results.filter(r => r.is_valid).length,
+        expired: results.filter(r => r.status === 'Expired').length,
+        invalid: results.filter(r => !r.is_valid && r.status !== 'Expired').length,
+        results
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // 4. Database CRUD & Stats
+  app.get('/api/db/accounts', (req, res) => {
+    try {
+      const { status, search, limit, offset, sortBy, sortOrder } = req.query;
+      const accounts = getAccounts({
+        status: status ? String(status) : undefined,
+        search: search ? String(search) : undefined,
+        limit: limit ? Number(limit) : undefined,
+        offset: offset ? Number(offset) : undefined,
+        sortBy: sortBy ? String(sortBy) : undefined,
+        sortOrder: sortOrder ? (String(sortOrder).toUpperCase() as 'ASC' | 'DESC') : undefined
+      });
+      res.json(accounts);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get('/api/db/stats', (req, res) => {
+    try {
+      const stats = getDatabaseStats();
+      res.json(stats);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/db/save', (req, res) => {
+    try {
+      const id = saveAccountToDb(req.body);
+      res.json({ success: true, id });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.delete('/api/db/account/:id', (req, res) => {
+    try {
+      const deleted = deleteAccountById(Number(req.params.id));
+      res.json({ success: deleted });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.all(['/api/db/delete-bulk', '/api/db/delete-selected'], (req, res) => {
+    try {
+      const ids = req.body?.ids || req.query?.ids;
+      const parsedIds = Array.isArray(ids)
+        ? ids.map(Number).filter((n: number) => !isNaN(n))
+        : typeof ids === 'string'
+        ? ids.split(',').map(Number).filter((n: number) => !isNaN(n))
+        : [];
+
+      if (!parsedIds.length) {
+        return res.status(400).json({ error: 'ids array required' });
+      }
+      const count = deleteAccountsBulk(parsedIds);
+      res.json({ success: true, count });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.all(['/api/db/clear', '/api/db/wipe'], (req, res) => {
+    try {
+      clearAllAccounts();
+      res.json({ success: true, message: 'All accounts wiped' });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // 5. Exports & Downloads
+  app.get('/api/export', (req, res) => {
+    try {
+      const format = (req.query.format as 'm3u' | 'csv' | 'txt' | 'json') || 'txt';
+      const status = String(req.query.status || 'Valid');
+      const exportFile = generateExportData(format, status);
+
+      res.setHeader('Content-Type', exportFile.contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${exportFile.filename}"`);
+      res.send(exportFile.data);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get('/api/db/download-sqlite', (req, res) => {
+    try {
+      const dbPath = getDatabasePath();
+      if (!fs.existsSync(dbPath)) {
+        return res.status(404).json({ error: 'Database file not found' });
+      }
+      res.download(dbPath, 'xtream_accounts.db');
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // 6. Python Bridge & Source Downloads
+  app.post('/api/python/run', async (req, res) => {
+    try {
+      const { inputLines, threads, timeout, saveAll } = req.body;
+      if (!inputLines || typeof inputLines !== 'string') {
+        return res.status(400).json({ error: 'inputLines string is required' });
+      }
+
+      const result = await executePythonValidation(inputLines, {
+        threads: threads ? Number(threads) : 10,
+        timeout: timeout ? Number(timeout) : 8,
+        saveAll: Boolean(saveAll)
+      });
+
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get('/api/python/source/:filename', (req, res) => {
+    try {
+      const filename = req.params.filename;
+      const validFiles = ['xtream_validator_gui.py', 'xtream_cli.py', 'sample_accounts.txt'];
+      if (!validFiles.includes(filename)) {
+        return res.status(404).json({ error: 'File not found' });
+      }
+      const code = getPythonSourceCode(filename);
+      res.json({ filename, code });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get('/api/python/download/:filename', (req, res) => {
+    try {
+      const filename = req.params.filename;
+      const validFiles = ['xtream_validator_gui.py', 'xtream_cli.py', 'sample_accounts.txt'];
+      if (!validFiles.includes(filename)) {
+        return res.status(404).json({ error: 'File not found' });
+      }
+      const filePath = path.join(process.cwd(), 'python_app', filename);
+      res.download(filePath, filename);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Vite middleware for development
+  if (process.env.NODE_ENV !== 'production') {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Xtream Codes Validator server running on http://localhost:${PORT}`);
+  });
+}
+
+startServer();

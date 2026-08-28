@@ -1,0 +1,6 @@
+{
+  "name": "Xtream Codes Validator & Database Desktop",
+  "description": "Desktop-grade Xtream Codes API credential validator, batch .txt parser, SQLite database manager, and downloadable Python desktop application.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

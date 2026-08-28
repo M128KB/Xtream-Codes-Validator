@@ -1,0 +1,23 @@
+# Sample Xtream Codes Input File for Validation
+# Supported Formats:
+# 1. http://domain:port username password
+# 2. http://domain:port/get.php?username=USER&password=PASS
+# 3. http://domain:port|username|password
+# 4. http://domain:port,username,password
+# 5. http://domain:port/live/username/password/123.ts
+
+# Space separated
+http://xtream-demo.streamline-iptv.net:8080 demo_user_alpha pass_secret123
+http://iptv.server-pro.tv:80 user_premium99 pass_secure_2026
+http://live.global-stream.org:8000 test_account test_pass_456
+
+# URL with get.php query params
+http://mag.ultra-iptv.com:8080/get.php?username=client_sports_hd&password=client_pass_789&type=m3u_plus
+
+# Pipe separated
+http://tv.fast-iptv.cc:8080|speed_user_01|fastpass_2024
+http://stream.nordic-tv.com:8000|nordic_vip|nordic_pass_332
+
+# Colon & Comma formats
+http://play.stream-europe.eu:8000,euro_user_01,euro_pass_2025
+http://server.iptv-hub.net:8080:hub_member_42:hub_secret_99
