@@ -55,25 +55,17 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         <div className="flex items-center gap-3 sm:gap-4 text-[11px]">
           <div className="flex items-center gap-1.5">
-            <span className="text-gray-500">DB:</span>
+            <span className="text-gray-500">DB Records:</span>
             <span className="font-semibold text-white font-mono">{stats?.total ?? 0}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-gray-500">Valid:</span>
+            <span className="text-gray-500">Active Valid:</span>
             <span className="font-semibold text-emerald-400 font-mono">{stats?.valid ?? 0}</span>
           </div>
-
-          {/* Direct Admin Dashboard Link */}
-          {onOpenDashboard && (
-            <button
-              onClick={onOpenDashboard}
-              className="px-2 py-0.5 rounded bg-[#181820] hover:bg-[#23232C] text-amber-300 border border-amber-500/30 text-[10px] font-bold transition-all flex items-center gap-1 cursor-pointer font-mono"
-              title="Open Admin Subscriptions Dashboard (/dashboard)"
-            >
-              <KeyRound className="w-3 h-3 text-amber-400" />
-              <span>/dashboard</span>
-            </button>
-          )}
+          <div className="flex items-center gap-1.5">
+            <span className="text-gray-500">Expired:</span>
+            <span className="font-semibold text-amber-400 font-mono">{stats?.expired ?? 0}</span>
+          </div>
 
           {/* Quick License & Upgrade Button */}
           {isPro ? (

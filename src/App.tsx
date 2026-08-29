@@ -211,17 +211,12 @@ function AppContent() {
           <span>Connected to Local SQLite DB:</span>
           <span className="text-gray-300 font-mono">xtream_accounts.db</span>
         </div>
-        <div className="flex items-center gap-4 text-[10px]">
-          <button
-            onClick={() => navigateTo('/dashboard')}
-            className="text-gray-400 hover:text-amber-300 transition-colors flex items-center gap-1 font-mono"
-          >
-            <span>Admin /dashboard</span>
-          </button>
+        <div className="flex items-center gap-4 uppercase tracking-widest text-[10px]">
+          <span className="hover:text-gray-300 transition-colors">M3U8 Stream Engine</span>
           <span className="text-gray-600">•</span>
-          <span className="hover:text-gray-300 transition-colors uppercase tracking-widest">HWID Shield Active</span>
+          <span className="hover:text-gray-300 transition-colors">HWID Shield Active</span>
           <span className="text-gray-600">•</span>
-          <span className="text-indigo-400 font-semibold uppercase tracking-widest">Auto-Sync On</span>
+          <span className="text-indigo-400 font-semibold">Auto-Sync On</span>
         </div>
       </footer>
 
