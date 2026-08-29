@@ -6,6 +6,7 @@ import { SingleTesterTab } from './components/SingleTesterTab';
 import { PythonStudioTab } from './components/PythonStudioTab';
 import { AccountDetailModal } from './components/AccountDetailModal';
 import { ExportModal } from './components/ExportModal';
+import { AdminUnlockModal } from './components/AdminUnlockModal';
 import { XtreamAccount, DatabaseStats } from './types';
 
 export default function App() {
@@ -14,6 +15,10 @@ export default function App() {
   const [inspectAccount, setInspectAccount] = useState<XtreamAccount | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
   const [isBatchValidating, setIsBatchValidating] = useState<boolean>(false);
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
+    return localStorage.getItem('xval_admin_authenticated') === 'true';
+  });
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState<boolean>(false);
 
   const fetchDbStats = async () => {
     try {
@@ -73,6 +78,8 @@ export default function App() {
         stats={stats}
         onRefreshDb={fetchDbStats}
         isValidatingBatch={isBatchValidating}
+        isAdminAuthenticated={isAdminAuthenticated}
+        onOpenAdminAuth={() => setIsAdminModalOpen(true)}
       />
 
       {/* Main Workspace Container - Persistent tabs to preserve batch progress and background state */}
@@ -103,9 +110,32 @@ export default function App() {
         </div>
 
         <div className={activeTab === 'python' ? 'block' : 'hidden'}>
-          <PythonStudioTab
-            onRefreshDb={fetchDbStats}
-          />
+          {isAdminAuthenticated ? (
+            <PythonStudioTab
+              onRefreshDb={fetchDbStats}
+              onLockAdmin={() => {
+                localStorage.removeItem('xval_admin_authenticated');
+                setIsAdminAuthenticated(false);
+                setActiveTab('validator');
+              }}
+            />
+          ) : (
+            <div className="bg-[#111114] border border-[#242428] rounded-2xl p-12 text-center max-w-lg mx-auto my-12 space-y-4 shadow-xl">
+              <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mx-auto text-amber-400">
+                <span className="text-2xl">🔒</span>
+              </div>
+              <h3 className="text-xl font-bold text-white tracking-tight">Owner-Only Workspace</h3>
+              <p className="text-xs text-gray-400 leading-relaxed">
+                The Python Desktop Studio & Source Code files are locked to prevent unauthorized visitors from accessing raw source scripts.
+              </p>
+              <button
+                onClick={() => setIsAdminModalOpen(true)}
+                className="px-6 py-2.5 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-black font-bold rounded-xl text-xs shadow-lg shadow-amber-600/20 transition-all cursor-pointer"
+              >
+                Unlock with Admin Passkey
+              </button>
+            </div>
+          )}
         </div>
       </main>
 
@@ -136,6 +166,17 @@ export default function App() {
       <ExportModal
         isOpen={isExportModalOpen}
         onClose={() => setIsExportModalOpen(false)}
+      />
+
+      {/* Owner Admin Unlock Modal */}
+      <AdminUnlockModal
+        isOpen={isAdminModalOpen}
+        onClose={() => setIsAdminModalOpen(false)}
+        onSuccess={() => {
+          setIsAdminAuthenticated(true);
+          setIsAdminModalOpen(false);
+          setActiveTab('python');
+        }}
       />
     </div>
   );

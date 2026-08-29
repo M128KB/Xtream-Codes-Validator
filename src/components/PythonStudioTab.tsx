@@ -18,15 +18,19 @@ import {
 
 interface PythonStudioTabProps {
   onRefreshDb: () => void;
+  onLockAdmin?: () => void;
 }
 
-export const PythonStudioTab: React.FC<PythonStudioTabProps> = ({ onRefreshDb }) => {
+export const PythonStudioTab: React.FC<PythonStudioTabProps> = ({ onRefreshDb, onLockAdmin }) => {
   const [activeFile, setActiveFile] = useState<'xtream_validator_gui.py' | 'xtream_cli.py' | 'sample_accounts.txt'>(
     'xtream_validator_gui.py'
   );
   const [sourceCode, setSourceCode] = useState<string>('');
   const [loadingCode, setLoadingCode] = useState<boolean>(true);
   const [copied, setCopied] = useState<boolean>(false);
+  const [newPin, setNewPin] = useState<string>('');
+  const [pinChangeMsg, setPinChangeMsg] = useState<string | null>(null);
+  const [showPinSettings, setShowPinSettings] = useState<boolean>(false);
 
   // Live Terminal Runner State
   const [runnerInput, setRunnerInput] = useState<string>(
@@ -148,8 +152,58 @@ Click "Run Python Script on Server" to execute batch validation.`
               <FolderDown className="w-4 h-4 text-amber-400" />
               <span>Sample .TXT</span>
             </a>
+
+            <button
+              onClick={() => setShowPinSettings(!showPinSettings)}
+              className="px-3 py-2.5 bg-[#18181D] hover:bg-[#202026] text-amber-300 rounded-md text-xs font-medium border border-amber-500/30 flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Admin Security Settings"
+            >
+              <ShieldCheck className="w-4 h-4 text-amber-400" />
+              <span>PIN Settings</span>
+            </button>
+
+            {onLockAdmin && (
+              <button
+                onClick={onLockAdmin}
+                className="px-3 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 rounded-md text-xs font-medium border border-rose-500/30 flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Lock Studio"
+              >
+                <span>Lock Studio</span>
+              </button>
+            )}
           </div>
         </div>
+
+        {/* Change PIN Dropdown */}
+        {showPinSettings && (
+          <div className="mt-4 pt-4 border-t border-[#242428] flex flex-col sm:flex-row items-start sm:items-center gap-3 bg-[#0A0A0C] p-3 rounded-lg border">
+            <span className="text-xs text-gray-300 font-medium">Update Admin Passkey:</span>
+            <div className="flex items-center gap-2">
+              <input
+                type="password"
+                value={newPin}
+                onChange={(e) => setNewPin(e.target.value)}
+                placeholder="New PIN (e.g. secret456)"
+                className="bg-[#141418] border border-[#27272F] rounded px-2.5 py-1 text-xs text-white font-mono focus:outline-none focus:border-amber-400"
+              />
+              <button
+                onClick={() => {
+                  if (!newPin.trim()) return;
+                  localStorage.setItem('xval_admin_pin', newPin.trim());
+                  setPinChangeMsg('PIN updated successfully!');
+                  setNewPin('');
+                  setTimeout(() => setPinChangeMsg(null), 3000);
+                }}
+                className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold rounded cursor-pointer"
+              >
+                Save
+              </button>
+            </div>
+            {pinChangeMsg && (
+              <span className="text-xs text-emerald-400 font-medium">{pinChangeMsg}</span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Two Column Section: Live Terminal Runner on Left, Source Code on Right */}

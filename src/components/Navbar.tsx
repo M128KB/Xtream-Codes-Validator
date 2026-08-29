@@ -1,5 +1,5 @@
 import React from 'react';
-import { Database, Zap, HardDrive, Terminal, Search, ShieldCheck, Download } from 'lucide-react';
+import { Database, Zap, HardDrive, Terminal, Search, ShieldCheck, Download, Lock } from 'lucide-react';
 import { DatabaseStats } from '../types';
 
 interface NavbarProps {
@@ -8,6 +8,8 @@ interface NavbarProps {
   stats: DatabaseStats | null;
   onRefreshDb: () => void;
   isValidatingBatch?: boolean;
+  isAdminAuthenticated?: boolean;
+  onOpenAdminAuth?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -16,6 +18,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   stats,
   onRefreshDb,
   isValidatingBatch = false,
+  isAdminAuthenticated = false,
+  onOpenAdminAuth,
 }) => {
   return (
     <header className="bg-[#111114] border-b border-[#242428] text-[#D1D1D1] select-none sticky top-0 z-40 shadow-sm">
@@ -124,15 +128,30 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           <button
             id="tab-python-btn"
-            onClick={() => setActiveTab('python')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-md text-xs font-medium transition-all ${
+            onClick={() => {
+              if (isAdminAuthenticated) {
+                setActiveTab('python');
+              } else if (onOpenAdminAuth) {
+                onOpenAdminAuth();
+              }
+            }}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-md text-xs font-medium transition-all cursor-pointer ${
               activeTab === 'python'
                 ? 'bg-indigo-600 text-white shadow-sm font-semibold'
                 : 'text-gray-400 hover:text-white hover:bg-[#1C1C21]'
             }`}
           >
-            <Terminal className="w-3.5 h-3.5" />
+            {isAdminAuthenticated ? (
+              <Terminal className="w-3.5 h-3.5 text-indigo-400" />
+            ) : (
+              <Lock className="w-3.5 h-3.5 text-amber-400" />
+            )}
             <span>Python Desktop App</span>
+            {!isAdminAuthenticated && (
+              <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-amber-500/10 text-amber-400 border border-amber-500/25">
+                Owner Only
+              </span>
+            )}
           </button>
         </nav>
       </div>
