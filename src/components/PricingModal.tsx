@@ -987,6 +987,19 @@ export const PricingModal: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-2">
+                      <a
+                        href="/dashboard"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          closeUpgradeModal();
+                          window.history.pushState({}, '', '/dashboard');
+                          window.dispatchEvent(new PopStateEvent('popstate'));
+                        }}
+                        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-lg text-xs flex items-center gap-1.5 cursor-pointer shadow-sm"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Full /dashboard</span>
+                      </a>
                       <button
                         onClick={() => fetchAdminOrders()}
                         disabled={adminLoading}

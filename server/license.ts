@@ -575,7 +575,7 @@ export function adminRejectPaymentOrder(orderId: string, reason?: string): { suc
 /**
  * Retrieve all licenses for admin / owner overview
  */
-export function getAllLicenses(): Array<LicenseRecord & { devices_count: number }> {
+export function getAllLicenses(): Array<LicenseRecord & { devices_count: number; devices?: LicenseDeviceRecord[] }> {
   const db = getDatabase();
   const stmt = db.prepare(`
     SELECT l.*, COUNT(d.id) as devices_count
@@ -584,6 +584,122 @@ export function getAllLicenses(): Array<LicenseRecord & { devices_count: number 
     GROUP BY l.key
     ORDER BY l.created_at DESC
   `);
-  return stmt.all() as any;
+  const licenses = stmt.all() as any[];
+
+  // Attach devices to each license
+  const devStmt = db.prepare('SELECT * FROM license_devices WHERE license_key = ? ORDER BY last_seen_at DESC');
+  for (const lic of licenses) {
+    lic.devices = devStmt.all(lic.key) as unknown as LicenseDeviceRecord[];
+  }
+
+  return licenses;
 }
+
+/**
+ * Retrieve admin subscription stats
+ */
+export function getAdminSubscriptionStats(): {
+  totalRevenueUsd: number;
+  totalLicenses: number;
+  activeLicenses: number;
+  bannedLicenses: number;
+  standardLicenses: number;
+  vipLicenses: number;
+  totalDevices: number;
+  pendingOrders: number;
+  approvedOrders: number;
+  rejectedOrders: number;
+} {
+  const db = getDatabase();
+
+  const revStmt = db.prepare("SELECT SUM(amount_usd) as total FROM payment_orders WHERE status = 'approved'");
+  const revRow = revStmt.get() as any;
+  const totalRevenueUsd = Number(revRow?.total || 0);
+
+  const licStatsStmt = db.prepare(`
+    SELECT 
+      COUNT(*) as total,
+      SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
+      SUM(CASE WHEN status = 'banned' THEN 1 ELSE 0 END) as banned,
+      SUM(CASE WHEN tier = 'standard' THEN 1 ELSE 0 END) as standard,
+      SUM(CASE WHEN tier = 'pro_vip' THEN 1 ELSE 0 END) as vip
+    FROM licenses
+  `);
+  const licRow = licStatsStmt.get() as any;
+
+  const devCountStmt = db.prepare('SELECT COUNT(*) as total FROM license_devices');
+  const devRow = devCountStmt.get() as any;
+
+  const orderStatsStmt = db.prepare(`
+    SELECT 
+      SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+      SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved,
+      SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected
+    FROM payment_orders
+  `);
+  const orderRow = orderStatsStmt.get() as any;
+
+  return {
+    totalRevenueUsd,
+    totalLicenses: licRow?.total || 0,
+    activeLicenses: licRow?.active || 0,
+    bannedLicenses: licRow?.banned || 0,
+    standardLicenses: licRow?.standard || 0,
+    vipLicenses: licRow?.vip || 0,
+    totalDevices: devRow?.total || 0,
+    pendingOrders: orderRow?.pending || 0,
+    approvedOrders: orderRow?.approved || 0,
+    rejectedOrders: orderRow?.rejected || 0,
+  };
+}
+
+/**
+ * Admin action: Revoke/ban a license
+ */
+export function adminRevokeLicense(key: string, reason?: string): { success: boolean; error?: string } {
+  const db = getDatabase();
+  const stmt = db.prepare("UPDATE licenses SET status = 'banned', notes = notes || ' [REVOKED: ' || ? || ']' WHERE key = ?");
+  stmt.run(reason || 'Banned by admin', key);
+  return { success: true };
+}
+
+/**
+ * Admin action: Reinstate an active license
+ */
+export function adminReinstateLicense(key: string): { success: boolean; error?: string } {
+  const db = getDatabase();
+  const stmt = db.prepare("UPDATE licenses SET status = 'active' WHERE key = ?");
+  stmt.run(key);
+  return { success: true };
+}
+
+/**
+ * Admin action: Delete a license and its bound devices
+ */
+export function adminDeleteLicense(key: string): { success: boolean; error?: string } {
+  const db = getDatabase();
+  db.prepare('DELETE FROM license_devices WHERE license_key = ?').run(key);
+  db.prepare('DELETE FROM license_access_logs WHERE license_key = ?').run(key);
+  db.prepare('DELETE FROM licenses WHERE key = ?').run(key);
+  return { success: true };
+}
+
+/**
+ * Admin action: Delete a payment order
+ */
+export function adminDeletePaymentOrder(orderId: string): { success: boolean; error?: string } {
+  const db = getDatabase();
+  db.prepare('DELETE FROM payment_orders WHERE order_id = ?').run(orderId);
+  return { success: true };
+}
+
+/**
+ * Admin action: Force disconnect a device from a license
+ */
+export function adminForceDisconnectDevice(licenseKey: string, hwid: string): { success: boolean; error?: string } {
+  const db = getDatabase();
+  db.prepare('DELETE FROM license_devices WHERE license_key = ? AND device_hwid = ?').run(licenseKey, hwid);
+  return { success: true };
+}
+
 

@@ -79,4 +79,40 @@ export interface PaymentOrder {
   notes?: string;
 }
 
+export interface AdminSubscriptionStats {
+  totalRevenueUsd: number;
+  totalLicenses: number;
+  activeLicenses: number;
+  bannedLicenses: number;
+  standardLicenses: number;
+  vipLicenses: number;
+  totalDevices: number;
+  pendingOrders: number;
+  approvedOrders: number;
+  rejectedOrders: number;
+}
+
+export interface AdminLicenseItem {
+  key: string;
+  tier: 'standard' | 'pro_vip';
+  email: string;
+  max_devices: number;
+  created_at: string;
+  status: 'active' | 'banned' | 'expired';
+  payment_method: string;
+  payment_ref: string;
+  notes?: string;
+  devices_count: number;
+  devices?: Array<{
+    id: number;
+    license_key: string;
+    device_hwid: string;
+    device_name: string;
+    last_ip: string;
+    last_seen_at: string;
+    created_at: string;
+  }>;
+}
+
+
 

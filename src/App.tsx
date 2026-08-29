@@ -8,11 +8,15 @@ import { AccountDetailModal } from './components/AccountDetailModal';
 import { ExportModal } from './components/ExportModal';
 import { AdminUnlockModal } from './components/AdminUnlockModal';
 import { PricingModal } from './components/PricingModal';
+import { AdminDashboard } from './components/AdminDashboard';
 import { LicenseProvider, useLicense } from './context/LicenseContext';
 import { XtreamAccount, DatabaseStats } from './types';
 import { Lock, Crown, KeyRound, Terminal, Sparkles } from 'lucide-react';
 
 function AppContent() {
+  const [currentPath, setCurrentPath] = useState<string>(() => {
+    return window.location.pathname;
+  });
   const [activeTab, setActiveTab] = useState<'validator' | 'database' | 'single' | 'python'>('validator');
   const [stats, setStats] = useState<DatabaseStats | null>(null);
   const [inspectAccount, setInspectAccount] = useState<XtreamAccount | null>(null);
@@ -24,6 +28,19 @@ function AppContent() {
   const [isAdminModalOpen, setIsAdminModalOpen] = useState<boolean>(false);
 
   const { isPro, openUpgradeModal } = useLicense();
+
+  const navigateTo = (path: string) => {
+    window.history.pushState({}, '', path);
+    setCurrentPath(path);
+  };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPath(window.location.pathname);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   const fetchDbStats = async () => {
     try {
@@ -74,6 +91,15 @@ function AppContent() {
     }
   };
 
+  // If user is directly at /dashboard or clicked admin dashboard
+  if (currentPath === '/dashboard' || currentPath.startsWith('/dashboard')) {
+    return (
+      <AdminDashboard
+        onBackToApp={() => navigateTo('/')}
+      />
+    );
+  }
+
   const isPythonAllowed = isPro || isAdminAuthenticated;
 
   return (
@@ -87,6 +113,7 @@ function AppContent() {
         isValidatingBatch={isBatchValidating}
         isAdminAuthenticated={isAdminAuthenticated}
         onOpenAdminAuth={() => setIsAdminModalOpen(true)}
+        onOpenDashboard={() => navigateTo('/dashboard')}
       />
 
       {/* Main Workspace Container - Persistent tabs to preserve batch progress and background state */}
@@ -158,12 +185,19 @@ function AppContent() {
                 </button>
               </div>
 
-              <div className="pt-3 border-t border-[#1E1E24]">
+              <div className="pt-3 border-t border-[#1E1E24] flex items-center justify-between">
                 <button
                   onClick={() => setIsAdminModalOpen(true)}
                   className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
                 >
                   Owner login with Admin Passkey
+                </button>
+
+                <button
+                  onClick={() => navigateTo('/dashboard')}
+                  className="text-xs text-amber-400 hover:underline flex items-center gap-1"
+                >
+                  Open /dashboard
                 </button>
               </div>
             </div>
@@ -177,12 +211,17 @@ function AppContent() {
           <span>Connected to Local SQLite DB:</span>
           <span className="text-gray-300 font-mono">xtream_accounts.db</span>
         </div>
-        <div className="flex items-center gap-4 uppercase tracking-widest text-[10px]">
-          <span className="hover:text-gray-300 transition-colors">M3U8 Stream Engine</span>
+        <div className="flex items-center gap-4 text-[10px]">
+          <button
+            onClick={() => navigateTo('/dashboard')}
+            className="text-gray-400 hover:text-amber-300 transition-colors flex items-center gap-1 font-mono"
+          >
+            <span>Admin /dashboard</span>
+          </button>
           <span className="text-gray-600">•</span>
-          <span className="hover:text-gray-300 transition-colors">HWID Shield Active</span>
+          <span className="hover:text-gray-300 transition-colors uppercase tracking-widest">HWID Shield Active</span>
           <span className="text-gray-600">•</span>
-          <span className="text-indigo-400 font-semibold">Auto-Sync On</span>
+          <span className="text-indigo-400 font-semibold uppercase tracking-widest">Auto-Sync On</span>
         </div>
       </footer>
 
@@ -224,3 +263,4 @@ export default function App() {
     </LicenseProvider>
   );
 }
+

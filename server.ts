@@ -29,8 +29,33 @@ import {
   submitPaymentOrder,
   getAllPaymentOrders,
   adminApprovePaymentOrder,
-  adminRejectPaymentOrder
+  adminRejectPaymentOrder,
+  getAdminSubscriptionStats,
+  adminRevokeLicense,
+  adminReinstateLicense,
+  adminDeleteLicense,
+  adminDeletePaymentOrder,
+  adminForceDisconnectDevice
 } from './server/license.js';
+
+function checkAdminAuth(req: express.Request): boolean {
+  const configuredSecret = process.env.ADMIN_SECRET_KEY || process.env.ADMIN_PIN || '90tech';
+  const providedKey = 
+    req.headers['x-admin-key'] ||
+    req.headers['x-admin-pin'] ||
+    (req.headers['authorization'] ? req.headers['authorization'].replace(/^Bearer\s+/i, '') : '') ||
+    req.query.admin_key;
+
+  if (!providedKey) return false;
+  const strKey = String(providedKey).trim();
+
+  // Allow the configured .env secret, or standard fallback keys if matching
+  return (
+    strKey === configuredSecret.trim() ||
+    strKey === '90tech' ||
+    strKey === 'admin123'
+  );
+}
 
 async function startServer() {
   const app = express();
@@ -326,11 +351,34 @@ async function startServer() {
     }
   });
 
-  // Admin Licenses & Orders API
+  // Admin Subscription & Orders Management API
+  app.post('/api/admin/verify', (req, res) => {
+    try {
+      const authorized = checkAdminAuth(req);
+      if (!authorized) {
+        return res.status(403).json({ success: false, error: 'Invalid admin secret key' });
+      }
+      res.json({ success: true, message: 'Admin authentication successful' });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.get('/api/admin/stats', (req, res) => {
+    try {
+      if (!checkAdminAuth(req)) {
+        return res.status(403).json({ error: 'Unauthorized admin access' });
+      }
+      const stats = getAdminSubscriptionStats();
+      res.json({ success: true, stats });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.get('/api/admin/orders', (req, res) => {
     try {
-      const adminPin = req.headers['x-admin-pin'];
-      if (!adminPin || (adminPin !== '90tech' && adminPin !== 'admin123')) {
+      if (!checkAdminAuth(req)) {
         return res.status(403).json({ error: 'Unauthorized admin access' });
       }
       const orders = getAllPaymentOrders();
@@ -342,8 +390,7 @@ async function startServer() {
 
   app.post('/api/admin/orders/approve', (req, res) => {
     try {
-      const adminPin = req.headers['x-admin-pin'];
-      if (!adminPin || (adminPin !== '90tech' && adminPin !== 'admin123')) {
+      if (!checkAdminAuth(req)) {
         return res.status(403).json({ error: 'Unauthorized admin access' });
       }
       const { orderId } = req.body;
@@ -359,8 +406,7 @@ async function startServer() {
 
   app.post('/api/admin/orders/reject', (req, res) => {
     try {
-      const adminPin = req.headers['x-admin-pin'];
-      if (!adminPin || (adminPin !== '90tech' && adminPin !== 'admin123')) {
+      if (!checkAdminAuth(req)) {
         return res.status(403).json({ error: 'Unauthorized admin access' });
       }
       const { orderId, reason } = req.body;
@@ -374,10 +420,25 @@ async function startServer() {
     }
   });
 
+  app.post('/api/admin/orders/delete', (req, res) => {
+    try {
+      if (!checkAdminAuth(req)) {
+        return res.status(403).json({ error: 'Unauthorized admin access' });
+      }
+      const { orderId } = req.body;
+      if (!orderId) {
+        return res.status(400).json({ error: 'orderId is required' });
+      }
+      const result = adminDeletePaymentOrder(orderId);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.get('/api/admin/licenses', (req, res) => {
     try {
-      const adminPin = req.headers['x-admin-pin'];
-      if (!adminPin || (adminPin !== '90tech' && adminPin !== 'admin123')) {
+      if (!checkAdminAuth(req)) {
         return res.status(403).json({ error: 'Unauthorized admin access' });
       }
       const list = getAllLicenses();
@@ -389,8 +450,7 @@ async function startServer() {
 
   app.post('/api/admin/licenses/create', (req, res) => {
     try {
-      const adminPin = req.headers['x-admin-pin'];
-      if (!adminPin || (adminPin !== '90tech' && adminPin !== 'admin123')) {
+      if (!checkAdminAuth(req)) {
         return res.status(403).json({ error: 'Unauthorized admin access' });
       }
       const { email, tier, maxDevices, notes } = req.body;
@@ -402,6 +462,70 @@ async function startServer() {
         notes: notes || 'Admin issued key'
       });
       res.json({ success: true, license: newLic });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/admin/licenses/revoke', (req, res) => {
+    try {
+      if (!checkAdminAuth(req)) {
+        return res.status(403).json({ error: 'Unauthorized admin access' });
+      }
+      const { key, reason } = req.body;
+      if (!key) {
+        return res.status(400).json({ error: 'License key is required' });
+      }
+      const result = adminRevokeLicense(key, reason);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/admin/licenses/reinstate', (req, res) => {
+    try {
+      if (!checkAdminAuth(req)) {
+        return res.status(403).json({ error: 'Unauthorized admin access' });
+      }
+      const { key } = req.body;
+      if (!key) {
+        return res.status(400).json({ error: 'License key is required' });
+      }
+      const result = adminReinstateLicense(key);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/admin/licenses/delete', (req, res) => {
+    try {
+      if (!checkAdminAuth(req)) {
+        return res.status(403).json({ error: 'Unauthorized admin access' });
+      }
+      const { key } = req.body;
+      if (!key) {
+        return res.status(400).json({ error: 'License key is required' });
+      }
+      const result = adminDeleteLicense(key);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/admin/devices/disconnect', (req, res) => {
+    try {
+      if (!checkAdminAuth(req)) {
+        return res.status(403).json({ error: 'Unauthorized admin access' });
+      }
+      const { licenseKey, hwid } = req.body;
+      if (!licenseKey || !hwid) {
+        return res.status(400).json({ error: 'licenseKey and hwid are required' });
+      }
+      const result = adminForceDisconnectDevice(licenseKey, hwid);
+      res.json(result);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
