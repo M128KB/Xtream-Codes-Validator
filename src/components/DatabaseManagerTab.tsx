@@ -23,7 +23,8 @@ import {
   AlertCircle,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Play
 } from 'lucide-react';
 import { XtreamAccount, DatabaseStats } from '../types';
 
@@ -32,6 +33,7 @@ interface DatabaseManagerTabProps {
   onRefreshDb: () => void;
   onOpenAccountDetail: (account: XtreamAccount) => void;
   onOpenExportModal: () => void;
+  onPlayAccount?: (account: XtreamAccount) => void;
   isActive?: boolean;
 }
 
@@ -49,6 +51,7 @@ export const DatabaseManagerTab: React.FC<DatabaseManagerTabProps> = ({
   onRefreshDb,
   onOpenAccountDetail,
   onOpenExportModal,
+  onPlayAccount,
   isActive = true,
 }) => {
   const [accounts, setAccounts] = useState<XtreamAccount[]>([]);
@@ -659,6 +662,19 @@ export const DatabaseManagerTab: React.FC<DatabaseManagerTabProps> = ({
                       {/* Actions */}
                       <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1.5">
+                          {onPlayAccount && (
+                            <button
+                              title="Play live channels & VOD movies in Web Player"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onPlayAccount(acc);
+                              }}
+                              className="p-1.5 rounded bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-400 hover:text-indigo-200 transition-colors border border-indigo-500/30 cursor-pointer flex items-center gap-1 text-[11px] font-semibold"
+                            >
+                              <Play className="w-3.5 h-3.5 fill-indigo-400" />
+                              <span className="hidden sm:inline">Play</span>
+                            </button>
+                          )}
                           <button
                             title="Copy M3U Playlist Link"
                             onClick={(e) => copyM3u(acc, e)}

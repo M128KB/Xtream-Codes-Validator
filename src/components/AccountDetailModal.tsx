@@ -15,7 +15,8 @@ import {
   Code2,
   Trash2,
   RefreshCw,
-  ExternalLink
+  ExternalLink,
+  Play
 } from 'lucide-react';
 import { XtreamAccount } from '../types';
 
@@ -24,6 +25,7 @@ interface AccountDetailModalProps {
   onClose: () => void;
   onDelete: (id: number) => void;
   onRevalidate: (acc: XtreamAccount) => void;
+  onPlayAccount?: (acc: XtreamAccount) => void;
 }
 
 export const AccountDetailModal: React.FC<AccountDetailModalProps> = ({
@@ -31,6 +33,7 @@ export const AccountDetailModal: React.FC<AccountDetailModalProps> = ({
   onClose,
   onDelete,
   onRevalidate,
+  onPlayAccount,
 }) => {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -234,12 +237,24 @@ export const AccountDetailModal: React.FC<AccountDetailModalProps> = ({
           )}
 
           <div className="flex items-center gap-2">
+            {onPlayAccount && account.is_valid && (
+              <button
+                onClick={() => {
+                  onPlayAccount(account);
+                  onClose();
+                }}
+                className="px-3.5 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+              >
+                <Play className="w-3.5 h-3.5 fill-white" />
+                <span>Open in Web Player</span>
+              </button>
+            )}
             <button
               onClick={() => {
                 onRevalidate(account);
                 onClose();
               }}
-              className="px-4 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+              className="px-3.5 py-1.5 rounded-md bg-[#24242C] hover:bg-[#2F2F3A] text-gray-200 text-xs font-semibold flex items-center gap-1.5 border border-[#3A3A46] transition-colors cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5" />
               Re-validate Account

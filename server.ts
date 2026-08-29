@@ -22,6 +22,10 @@ import {
   generateExportData
 } from './server/python_bridge.js';
 import {
+  fetchXtreamJson,
+  pipeStream
+} from './server/stream_proxy.js';
+import {
   verifyOrActivateLicense,
   disconnectDevice,
   createNewLicense,
@@ -577,6 +581,128 @@ async function startServer() {
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
+  });
+
+  // 8. Xtream Content & Media Stream Proxy (Live, VOD, EPG)
+  app.post('/api/player/categories', async (req, res) => {
+    try {
+      const { domain, username, password, type = 'live' } = req.body;
+      if (!domain || !username || !password) {
+        return res.status(400).json({ error: 'domain, username and password are required' });
+      }
+
+      const action = type === 'vod' ? 'get_vod_categories' : type === 'series' ? 'get_series_categories' : 'get_live_categories';
+      const cleanHost = domain.replace(/\/+$/, '');
+      const url = `${cleanHost}/player_api.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&action=${action}`;
+
+      const categories = await fetchXtreamJson(url, { timeout: 12 });
+      res.json(Array.isArray(categories) ? categories : []);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/player/streams', async (req, res) => {
+    try {
+      const { domain, username, password, type = 'live', categoryId } = req.body;
+      if (!domain || !username || !password) {
+        return res.status(400).json({ error: 'domain, username and password are required' });
+      }
+
+      const action = type === 'vod' ? 'get_vod_streams' : type === 'series' ? 'get_series' : 'get_live_streams';
+      const cleanHost = domain.replace(/\/+$/, '');
+      let url = `${cleanHost}/player_api.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&action=${action}`;
+      if (categoryId && categoryId !== 'all') {
+        url += `&category_id=${encodeURIComponent(categoryId)}`;
+      }
+
+      const streams = await fetchXtreamJson(url, { timeout: 15 });
+      res.json(Array.isArray(streams) ? streams : []);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/player/epg', async (req, res) => {
+    try {
+      const { domain, username, password, streamId, limit = 10 } = req.body;
+      if (!domain || !username || !password || !streamId) {
+        return res.status(400).json({ error: 'domain, username, password, and streamId are required' });
+      }
+
+      const cleanHost = domain.replace(/\/+$/, '');
+      const url = `${cleanHost}/player_api.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&action=get_short_epg&stream_id=${encodeURIComponent(streamId)}&limit=${encodeURIComponent(limit)}`;
+
+      const epgData = await fetchXtreamJson(url, { timeout: 10 });
+      const listings = epgData?.epg_listings || [];
+
+      // Base64 decode title and description if encoded
+      const formatted = listings.map((item: any) => {
+        let title = item.title;
+        let desc = item.descr || item.description || '';
+        try {
+          if (title && /^[A-Za-z0-9+/=]+$/.test(title) && title.length % 4 === 0) {
+            title = Buffer.from(title, 'base64').toString('utf8');
+          }
+        } catch (_) {}
+        try {
+          if (desc && /^[A-Za-z0-9+/=]+$/.test(desc) && desc.length % 4 === 0) {
+            desc = Buffer.from(desc, 'base64').toString('utf8');
+          }
+        } catch (_) {}
+
+        return {
+          ...item,
+          title,
+          description: desc
+        };
+      });
+
+      res.json(formatted);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Media Stream Passthrough Proxy (Solves HTTPS / Mixed Content & CORS blocks)
+  app.get('/api/stream/proxy', (req, res) => {
+    const streamUrl = req.query.url as string;
+    if (!streamUrl) {
+      return res.status(400).send('Missing ?url query parameter');
+    }
+
+    pipeStream(streamUrl, req.headers, res);
+  });
+
+  // Direct Live Stream URL Helper: /api/stream/live/:streamId.m3u8?host=...&user=...&pass=...
+  app.get(['/api/stream/live/:streamId.m3u8', '/api/stream/live/:streamId.ts', '/api/stream/live/:streamId'], (req, res) => {
+    const { streamId } = req.params;
+    const { host, user, pass, extension = 'm3u8' } = req.query;
+
+    if (!host || !user || !pass || !streamId) {
+      return res.status(400).send('Missing host, user, pass or streamId');
+    }
+
+    const cleanHost = String(host).replace(/\/+$/, '');
+    const ext = extension ? `.${extension}` : '.m3u8';
+    const target = `${cleanHost}/live/${encodeURIComponent(String(user))}/${encodeURIComponent(String(pass))}/${encodeURIComponent(streamId)}${ext}`;
+
+    pipeStream(target, req.headers, res);
+  });
+
+  // Direct VOD Movie URL Helper: /api/stream/movie/:streamId?host=...&user=...&pass=...&container=mp4
+  app.get(['/api/stream/movie/:streamId', '/api/stream/vod/:streamId'], (req, res) => {
+    const { streamId } = req.params;
+    const { host, user, pass, container = 'mp4' } = req.query;
+
+    if (!host || !user || !pass || !streamId) {
+      return res.status(400).send('Missing host, user, pass or streamId');
+    }
+
+    const cleanHost = String(host).replace(/\/+$/, '');
+    const target = `${cleanHost}/movie/${encodeURIComponent(String(user))}/${encodeURIComponent(String(pass))}/${encodeURIComponent(streamId)}.${container}`;
+
+    pipeStream(target, req.headers, res);
   });
 
   // Vite middleware for development

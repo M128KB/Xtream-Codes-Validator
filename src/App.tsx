@@ -9,6 +9,7 @@ import { ExportModal } from './components/ExportModal';
 import { AdminUnlockModal } from './components/AdminUnlockModal';
 import { PricingModal } from './components/PricingModal';
 import { AdminDashboard } from './components/AdminDashboard';
+import { WebPlayer } from './components/WebPlayer';
 import { LicenseProvider, useLicense } from './context/LicenseContext';
 import { XtreamAccount, DatabaseStats } from './types';
 import { Lock, Crown, KeyRound, Terminal, Sparkles } from 'lucide-react';
@@ -17,9 +18,10 @@ function AppContent() {
   const [currentPath, setCurrentPath] = useState<string>(() => {
     return window.location.pathname;
   });
-  const [activeTab, setActiveTab] = useState<'validator' | 'database' | 'single' | 'python'>('validator');
+  const [activeTab, setActiveTab] = useState<'validator' | 'database' | 'single' | 'player' | 'python'>('validator');
   const [stats, setStats] = useState<DatabaseStats | null>(null);
   const [inspectAccount, setInspectAccount] = useState<XtreamAccount | null>(null);
+  const [playerAccount, setPlayerAccount] = useState<XtreamAccount | null>(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
   const [isBatchValidating, setIsBatchValidating] = useState<boolean>(false);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
@@ -102,6 +104,11 @@ function AppContent() {
 
   const isPythonAllowed = isPro || isAdminAuthenticated;
 
+  const handlePlayAccount = (acc: XtreamAccount) => {
+    setPlayerAccount(acc);
+    setActiveTab('player');
+  };
+
   return (
     <div className="min-h-screen bg-[#0A0A0C] text-[#D1D1D1] flex flex-col font-sans selection:bg-indigo-600 selection:text-white">
       {/* Top Desktop Navigation */}
@@ -117,12 +124,13 @@ function AppContent() {
       />
 
       {/* Main Workspace Container - Persistent tabs to preserve batch progress and background state */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+      <main className={`flex-1 w-full mx-auto ${activeTab === 'player' ? 'p-0' : 'max-w-7xl p-4 sm:p-6 lg:p-8'}`}>
         <div className={activeTab === 'validator' ? 'block' : 'hidden'}>
           <BatchValidatorTab
             onAccountValidated={() => fetchDbStats()}
             onRefreshDbStats={fetchDbStats}
             onOpenAccountDetail={(acc) => setInspectAccount(acc)}
+            onPlayAccount={handlePlayAccount}
             onValidationStateChange={(validating) => setIsBatchValidating(validating)}
           />
         </div>
@@ -133,6 +141,7 @@ function AppContent() {
             onRefreshDb={fetchDbStats}
             onOpenAccountDetail={(acc) => setInspectAccount(acc)}
             onOpenExportModal={() => setIsExportModalOpen(true)}
+            onPlayAccount={handlePlayAccount}
             isActive={activeTab === 'database'}
           />
         </div>
@@ -140,6 +149,13 @@ function AppContent() {
         <div className={activeTab === 'single' ? 'block' : 'hidden'}>
           <SingleTesterTab
             onAccountSaved={() => fetchDbStats()}
+          />
+        </div>
+
+        <div className={activeTab === 'player' ? 'block' : 'hidden'}>
+          <WebPlayer
+            initialAccount={playerAccount}
+            onBackToDatabase={() => setActiveTab('database')}
           />
         </div>
 
@@ -226,6 +242,7 @@ function AppContent() {
         onClose={() => setInspectAccount(null)}
         onDelete={handleDeleteAccount}
         onRevalidate={handleRevalidate}
+        onPlayAccount={handlePlayAccount}
       />
 
       {/* Database Export Modal */}

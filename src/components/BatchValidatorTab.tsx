@@ -28,6 +28,7 @@ interface BatchValidatorTabProps {
   onAccountValidated: (account: XtreamAccount) => void;
   onRefreshDbStats: () => void;
   onOpenAccountDetail: (account: XtreamAccount) => void;
+  onPlayAccount?: (account: XtreamAccount) => void;
   onValidationStateChange?: (isValidating: boolean) => void;
 }
 
@@ -35,6 +36,7 @@ export const BatchValidatorTab: React.FC<BatchValidatorTabProps> = ({
   onAccountValidated,
   onRefreshDbStats,
   onOpenAccountDetail,
+  onPlayAccount,
   onValidationStateChange,
 }) => {
   const { isPro, freeScanLimit, openUpgradeModal } = useLicense();
@@ -736,17 +738,32 @@ domain.com:80|user|pass`}
 
                       {/* Actions */}
                       <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          title="Copy M3U Playlist URL"
-                          onClick={() => copyToClipboard(m3uUrl, uniqueKey)}
-                          className="p-1.5 rounded bg-[#1C1C21] hover:bg-[#242428] text-gray-300 transition-colors border border-[#34343A]"
-                        >
-                          {copiedId === uniqueKey ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
+                        <div className="flex items-center justify-end gap-1.5">
+                          {onPlayAccount && acc.is_valid && (
+                            <button
+                              title="Play live channels in Web Player"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onPlayAccount(acc);
+                              }}
+                              className="p-1.5 rounded bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-400 hover:text-indigo-200 transition-colors border border-indigo-500/30 flex items-center gap-1 cursor-pointer"
+                            >
+                              <Play className="w-3.5 h-3.5 fill-indigo-400" />
+                              <span className="hidden sm:inline text-[11px] font-semibold">Play</span>
+                            </button>
                           )}
-                        </button>
+                          <button
+                            title="Copy M3U Playlist URL"
+                            onClick={() => copyToClipboard(m3uUrl, uniqueKey)}
+                            className="p-1.5 rounded bg-[#1C1C21] hover:bg-[#242428] text-gray-300 transition-colors border border-[#34343A] cursor-pointer"
+                          >
+                            {copiedId === uniqueKey ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

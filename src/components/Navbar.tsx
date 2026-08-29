@@ -1,11 +1,11 @@
 import React from 'react';
-import { Database, Zap, HardDrive, Terminal, Search, ShieldCheck, Download, Lock, Crown, Laptop, KeyRound } from 'lucide-react';
+import { Database, Zap, HardDrive, Terminal, Search, ShieldCheck, Download, Lock, Crown, Laptop, Tv } from 'lucide-react';
 import { DatabaseStats } from '../types';
 import { useLicense } from '../context/LicenseContext';
 
 interface NavbarProps {
-  activeTab: 'validator' | 'database' | 'single' | 'python';
-  setActiveTab: (tab: 'validator' | 'database' | 'single' | 'python') => void;
+  activeTab: 'validator' | 'database' | 'single' | 'player' | 'python';
+  setActiveTab: (tab: 'validator' | 'database' | 'single' | 'player' | 'python') => void;
   stats: DatabaseStats | null;
   onRefreshDb: () => void;
   isValidatingBatch?: boolean;
@@ -164,6 +164,22 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <Search className="w-3.5 h-3.5" />
             <span>Single Inspector</span>
+          </button>
+
+          <button
+            id="tab-player-btn"
+            onClick={() => setActiveTab('player')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-md text-xs font-medium transition-all cursor-pointer ${
+              activeTab === 'player'
+                ? 'bg-indigo-600 text-white shadow-sm font-semibold'
+                : 'text-gray-400 hover:text-white hover:bg-[#1C1C21]'
+            }`}
+          >
+            <Tv className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Web Player</span>
+            <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+              Live/VOD
+            </span>
           </button>
 
           <button
