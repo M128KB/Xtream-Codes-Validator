@@ -38,7 +38,7 @@ export const PricingModal: React.FC = () => {
 
   const [currentTab, setCurrentTab] = useState<'pricing' | 'activate' | 'devices'>(activeModalTab || 'pricing');
   const [selectedPlan, setSelectedPlan] = useState<'standard' | 'pro_vip'>('pro_vip');
-  const [paymentMethod, setPaymentMethod] = useState<'crypto_binance' | 'crypto_cryptocom' | 'crypto_usdt' | 'payoneer'>('crypto_binance');
+  const [okxTransferType, setOkxTransferType] = useState<'internal' | 'trc20'>('internal');
   
   // Checkout & Order State
   const [customerEmail, setCustomerEmail] = useState<string>('');
@@ -106,9 +106,9 @@ export const PricingModal: React.FC = () => {
         body: JSON.stringify({
           email: customerEmail.trim(),
           tier: selectedPlan,
-          paymentMethod,
-          paymentRef: txRef.trim() || `ORDER-${Date.now().toString(36).toUpperCase()}`,
-          notes: `Instant checkout via ${paymentMethod}`,
+          paymentMethod: 'okx_crypto',
+          paymentRef: txRef.trim() || `OKX-${Date.now().toString(36).toUpperCase()}`,
+          notes: `Instant checkout via OKX Crypto (${okxTransferType === 'internal' ? 'OKX Internal Pay' : 'OKX USDT TRC20'})`,
         }),
       });
 
@@ -333,15 +333,17 @@ export const PricingModal: React.FC = () => {
 
               </div>
 
-              {/* Payment Methods Section */}
+              {/* OKX Crypto Payment Section */}
               <div className="bg-[#0E0E12] border border-[#242428] rounded-xl p-5 space-y-5">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-[#1E1E24] pb-3">
                   <div>
                     <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                      <CreditCard className="w-4 h-4 text-indigo-400" />
-                      Select Payment Gateway
+                      <span className="w-5 h-5 rounded-md bg-white text-black font-black flex items-center justify-center text-[10px] tracking-tighter">
+                        OKX
+                      </span>
+                      OKX Crypto Payment Gateway
                     </h4>
-                    <p className="text-xs text-gray-400">Choose Binance Pay, Crypto.com, USDT (TRC-20), or Payoneer for instant key delivery.</p>
+                    <p className="text-xs text-gray-400">Pay directly with OKX via 0-fee Internal Transfer or On-chain USDT (TRC-20).</p>
                   </div>
                   <div className="text-right">
                     <span className="text-xs text-gray-400">Total:</span>
@@ -351,148 +353,105 @@ export const PricingModal: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Gateway Tabs */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {/* OKX Transfer Method Selector */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => setPaymentMethod('crypto_binance')}
-                    className={`p-2.5 rounded-lg border text-left flex flex-col gap-1 transition-all cursor-pointer ${
-                      paymentMethod === 'crypto_binance'
-                        ? 'border-amber-400 bg-amber-500/10 text-white'
-                        : 'border-[#242428] bg-[#0A0A0C] text-gray-400 hover:border-[#383842]'
-                    }`}
-                  >
-                    <span className="font-bold text-xs text-amber-300">🟡 Binance Pay</span>
-                    <span className="text-[10px] text-gray-400">0% Fee / Instant Pay ID</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('crypto_cryptocom')}
-                    className={`p-2.5 rounded-lg border text-left flex flex-col gap-1 transition-all cursor-pointer ${
-                      paymentMethod === 'crypto_cryptocom'
-                        ? 'border-indigo-400 bg-indigo-500/10 text-white'
-                        : 'border-[#242428] bg-[#0A0A0C] text-gray-400 hover:border-[#383842]'
-                    }`}
-                  >
-                    <span className="font-bold text-xs text-indigo-300">🔵 Crypto.com</span>
-                    <span className="text-[10px] text-gray-400">Crypto.com Pay / App</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('crypto_usdt')}
-                    className={`p-2.5 rounded-lg border text-left flex flex-col gap-1 transition-all cursor-pointer ${
-                      paymentMethod === 'crypto_usdt'
+                    onClick={() => setOkxTransferType('internal')}
+                    className={`p-3 rounded-lg border text-left flex flex-col gap-1 transition-all cursor-pointer ${
+                      okxTransferType === 'internal'
                         ? 'border-emerald-400 bg-emerald-500/10 text-white'
                         : 'border-[#242428] bg-[#0A0A0C] text-gray-400 hover:border-[#383842]'
                     }`}
                   >
-                    <span className="font-bold text-xs text-emerald-300">🟢 USDT (TRC-20)</span>
-                    <span className="text-[10px] text-gray-400">Low Network Fee</span>
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-emerald-300 flex items-center gap-1.5">
+                        <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                        OKX Internal Transfer (0% Fee)
+                      </span>
+                      <span className="text-[9px] bg-emerald-500/20 text-emerald-300 font-bold px-1.5 py-0.5 rounded">
+                        Instant
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-gray-400">Free transfer to OKX Email / Account</span>
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => setPaymentMethod('payoneer')}
-                    className={`p-2.5 rounded-lg border text-left flex flex-col gap-1 transition-all cursor-pointer ${
-                      paymentMethod === 'payoneer'
-                        ? 'border-orange-400 bg-orange-500/10 text-white'
+                    onClick={() => setOkxTransferType('trc20')}
+                    className={`p-3 rounded-lg border text-left flex flex-col gap-1 transition-all cursor-pointer ${
+                      okxTransferType === 'trc20'
+                        ? 'border-indigo-400 bg-indigo-500/10 text-white'
                         : 'border-[#242428] bg-[#0A0A0C] text-gray-400 hover:border-[#383842]'
                     }`}
                   >
-                    <span className="font-bold text-xs text-orange-300">🔴 Payoneer</span>
-                    <span className="text-[10px] text-gray-400">Card / Balance</span>
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-indigo-300 flex items-center gap-1.5">
+                        <CreditCard className="w-3.5 h-3.5 text-indigo-400" />
+                        OKX USDT (TRC-20 Network)
+                      </span>
+                      <span className="text-[9px] bg-indigo-500/20 text-indigo-300 font-bold px-1.5 py-0.5 rounded">
+                        On-Chain
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-gray-400">Direct TRON network deposit</span>
                   </button>
                 </div>
 
-                {/* Gateway Detail Box */}
+                {/* OKX Gateway Detail Box */}
                 <div className="bg-[#0A0A0C] border border-[#202026] rounded-xl p-4 space-y-4">
-                  {paymentMethod === 'crypto_binance' && (
+                  {okxTransferType === 'internal' ? (
                     <div className="space-y-3">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         <div className="text-xs text-gray-300">
-                          <span className="text-gray-400 block text-[11px]">Binance Pay ID:</span>
-                          <code className="text-amber-300 font-mono text-sm font-bold">90TECH-BINANCE-PAY</code>
+                          <span className="text-gray-400 block text-[11px]">OKX Recipient Email / Account:</span>
+                          <code className="text-emerald-300 font-mono text-sm font-bold">m.128kb@gmail.com</code>
                         </div>
                         <button
                           type="button"
-                          onClick={() => copyToClipboard('90TECH-BINANCE-PAY', 'binance_id')}
+                          onClick={() => copyToClipboard('m.128kb@gmail.com', 'okx_email')}
                           className="px-3 py-1.5 bg-[#18181F] hover:bg-[#22222B] text-gray-300 hover:text-white rounded-lg text-xs font-mono flex items-center gap-1.5 border border-[#2E2E38] transition-colors self-start cursor-pointer"
                         >
-                          {copiedField === 'binance_id' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                          <span>{copiedField === 'binance_id' ? 'Copied' : 'Copy Pay ID'}</span>
+                          {copiedField === 'okx_email' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                          <span>{copiedField === 'okx_email' ? 'Copied' : 'Copy OKX Email'}</span>
                         </button>
                       </div>
-                      <p className="text-[11px] text-gray-400">
-                        Open the Binance App ➔ Tap <strong>Pay</strong> ➔ Send <strong>{selectedPlan === 'pro_vip' ? '$19.99' : '$9.99'} USDT</strong> to Pay ID above.
-                      </p>
-                    </div>
-                  )}
-
-                  {paymentMethod === 'crypto_cryptocom' && (
-                    <div className="space-y-3">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div className="text-xs text-gray-300">
-                          <span className="text-gray-400 block text-[11px]">Crypto.com Pay ID / Email:</span>
-                          <code className="text-indigo-300 font-mono text-sm font-bold">Mr90tech@gmail.com</code>
+                      <div className="bg-[#121217] p-2.5 rounded-lg border border-[#1E1E26] text-[11px] text-gray-300 space-y-1">
+                        <div className="text-emerald-400 font-semibold flex items-center gap-1">
+                          <Check className="w-3 h-3" /> How to pay via OKX App / Web:
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => copyToClipboard('Mr90tech@gmail.com', 'cdc_id')}
-                          className="px-3 py-1.5 bg-[#18181F] hover:bg-[#22222B] text-gray-300 hover:text-white rounded-lg text-xs font-mono flex items-center gap-1.5 border border-[#2E2E38] transition-colors self-start cursor-pointer"
-                        >
-                          {copiedField === 'cdc_id' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                          <span>{copiedField === 'cdc_id' ? 'Copied' : 'Copy Email'}</span>
-                        </button>
+                        <p className="text-gray-400">
+                          1. Open <strong>OKX App</strong> ➔ Tap <strong>Assets</strong> ➔ <strong>Withdraw</strong>.<br />
+                          2. Select <strong>USDT</strong> ➔ Choose <strong>Internal (free)</strong> transfer.<br />
+                          3. Enter recipient email <strong>m.128kb@gmail.com</strong> and send <strong>{selectedPlan === 'pro_vip' ? '19.99' : '9.99'} USDT</strong> (0 fee).
+                        </p>
                       </div>
-                      <p className="text-[11px] text-gray-400">
-                        Open Crypto.com App ➔ Tap <strong>Pay Friends</strong> ➔ Send <strong>{selectedPlan === 'pro_vip' ? '$19.99' : '$9.99'} USD</strong> with 0 fees.
-                      </p>
                     </div>
-                  )}
-
-                  {paymentMethod === 'crypto_usdt' && (
+                  ) : (
                     <div className="space-y-3">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         <div className="text-xs text-gray-300 overflow-hidden">
-                          <span className="text-gray-400 block text-[11px]">USDT TRC-20 Wallet Address:</span>
-                          <code className="text-emerald-300 font-mono text-xs font-bold break-all">TXYZ90TechValidatorDirectUSDT2026SafePay</code>
+                          <span className="text-gray-400 block text-[11px]">USDT TRC-20 (Tron Network) Address:</span>
+                          <code className="text-indigo-300 font-mono text-xs font-bold break-all">TXYZ90TechValidatorDirectUSDT2026SafePay</code>
                         </div>
                         <button
                           type="button"
-                          onClick={() => copyToClipboard('TXYZ90TechValidatorDirectUSDT2026SafePay', 'usdt_addr')}
+                          onClick={() => copyToClipboard('TXYZ90TechValidatorDirectUSDT2026SafePay', 'okx_trc20')}
                           className="px-3 py-1.5 bg-[#18181F] hover:bg-[#22222B] text-gray-300 hover:text-white rounded-lg text-xs font-mono flex items-center gap-1.5 border border-[#2E2E38] transition-colors self-start cursor-pointer flex-shrink-0"
                         >
-                          {copiedField === 'usdt_addr' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                          <span>{copiedField === 'usdt_addr' ? 'Copied' : 'Copy Address'}</span>
+                          {copiedField === 'okx_trc20' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                          <span>{copiedField === 'okx_trc20' ? 'Copied' : 'Copy TRC-20 Address'}</span>
                         </button>
                       </div>
-                      <p className="text-[11px] text-gray-400">
-                        Send exact <strong>{selectedPlan === 'pro_vip' ? '20' : '10'} USDT (TRC-20 network)</strong> to the address above.
-                      </p>
-                    </div>
-                  )}
-
-                  {paymentMethod === 'payoneer' && (
-                    <div className="space-y-3">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div className="text-xs text-gray-300">
-                          <span className="text-gray-400 block text-[11px]">Payoneer Recipient Email:</span>
-                          <code className="text-orange-300 font-mono text-sm font-bold">Mr90tech@gmail.com</code>
+                      <div className="bg-[#121217] p-2.5 rounded-lg border border-[#1E1E26] text-[11px] text-gray-300 space-y-1">
+                        <div className="text-indigo-400 font-semibold flex items-center gap-1">
+                          <Check className="w-3 h-3" /> How to pay on-chain:
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => copyToClipboard('Mr90tech@gmail.com', 'payo_email')}
-                          className="px-3 py-1.5 bg-[#18181F] hover:bg-[#22222B] text-gray-300 hover:text-white rounded-lg text-xs font-mono flex items-center gap-1.5 border border-[#2E2E38] transition-colors self-start cursor-pointer"
-                        >
-                          {copiedField === 'payo_email' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                          <span>{copiedField === 'payo_email' ? 'Copied' : 'Copy Email'}</span>
-                        </button>
+                        <p className="text-gray-400">
+                          1. Open <strong>OKX App</strong> ➔ <strong>Withdraw USDT</strong> ➔ Select <strong>USDT-TRC20</strong> network.<br />
+                          2. Paste the address above and transfer <strong>{selectedPlan === 'pro_vip' ? '20' : '10'} USDT</strong>.
+                        </p>
                       </div>
-                      <p className="text-[11px] text-gray-400">
-                        Log in to Payoneer ➔ <strong>Pay</strong> ➔ <strong>Make a Payment to recipient's email</strong> ({selectedPlan === 'pro_vip' ? '$19.99' : '$9.99'} USD).
-                      </p>
                     </div>
                   )}
 

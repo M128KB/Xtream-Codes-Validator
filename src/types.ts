@@ -70,7 +70,7 @@ export interface PaymentOrder {
   tier: 'standard' | 'pro_vip';
   email: string;
   amountUsd: number;
-  paymentMethod: 'crypto_binance' | 'crypto_cryptocom' | 'crypto_usdt' | 'crypto_btc' | 'payoneer';
+  paymentMethod: 'okx_crypto' | 'okx_pay' | 'okx_usdt';
   createdAt: number;
 }
 
