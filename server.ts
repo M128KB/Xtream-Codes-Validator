@@ -21,6 +21,12 @@ import {
   getPythonSourceCode,
   generateExportData
 } from './server/python_bridge.js';
+import {
+  verifyOrActivateLicense,
+  disconnectDevice,
+  createNewLicense,
+  getAllLicenses
+} from './server/license.js';
 
 async function startServer() {
   const app = express();
@@ -243,7 +249,115 @@ async function startServer() {
     }
   });
 
-  // 6. Python Bridge & Source Downloads
+  // 6. License Verification & Device Management
+  app.post('/api/license/verify', (req, res) => {
+    try {
+      const { key, hwid, deviceName } = req.body;
+      const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+      const clientIp = ip.split(',')[0].trim();
+
+      const result = verifyOrActivateLicense({
+        key,
+        hwid,
+        deviceName,
+        ip: clientIp
+      });
+
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.post('/api/license/activate', (req, res) => {
+    try {
+      const { key, hwid, deviceName } = req.body;
+      const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
+      const clientIp = ip.split(',')[0].trim();
+
+      const result = verifyOrActivateLicense({
+        key,
+        hwid,
+        deviceName,
+        ip: clientIp
+      });
+
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.post('/api/license/disconnect', (req, res) => {
+    try {
+      const { key, hwid } = req.body;
+      if (!key || !hwid) {
+        return res.status(400).json({ success: false, error: 'Key and hwid are required' });
+      }
+      const success = disconnectDevice(key, hwid);
+      res.json({ success });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  app.post('/api/license/order', (req, res) => {
+    try {
+      const { email, tier, paymentMethod, paymentRef, notes } = req.body;
+      if (!email || !tier || !paymentMethod) {
+        return res.status(400).json({ success: false, error: 'Email, tier, and payment method are required.' });
+      }
+
+      const cleanTier = tier === 'pro_vip' ? 'pro_vip' : 'standard';
+      const newLic = createNewLicense({
+        email,
+        tier: cleanTier,
+        paymentMethod,
+        paymentRef,
+        notes
+      });
+
+      res.json({ success: true, license: newLic });
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  // Admin Licenses API
+  app.get('/api/admin/licenses', (req, res) => {
+    try {
+      const adminPin = req.headers['x-admin-pin'];
+      if (!adminPin || (adminPin !== '90tech' && adminPin !== 'admin123')) {
+        return res.status(403).json({ error: 'Unauthorized admin access' });
+      }
+      const list = getAllLicenses();
+      res.json({ licenses: list });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/admin/licenses/create', (req, res) => {
+    try {
+      const adminPin = req.headers['x-admin-pin'];
+      if (!adminPin || (adminPin !== '90tech' && adminPin !== 'admin123')) {
+        return res.status(403).json({ error: 'Unauthorized admin access' });
+      }
+      const { email, tier, maxDevices, notes } = req.body;
+      const newLic = createNewLicense({
+        email: email || 'admin-issued@user.com',
+        tier: tier === 'pro_vip' ? 'pro_vip' : 'standard',
+        paymentMethod: 'admin_manual',
+        maxDevices: maxDevices ? Number(maxDevices) : (tier === 'pro_vip' ? 3 : 1),
+        notes: notes || 'Admin issued key'
+      });
+      res.json({ success: true, license: newLic });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // 7. Python Bridge & Source Downloads
   app.post('/api/python/run', async (req, res) => {
     try {
       const { inputLines, threads, timeout, saveAll } = req.body;

@@ -7,9 +7,12 @@ import { PythonStudioTab } from './components/PythonStudioTab';
 import { AccountDetailModal } from './components/AccountDetailModal';
 import { ExportModal } from './components/ExportModal';
 import { AdminUnlockModal } from './components/AdminUnlockModal';
+import { PricingModal } from './components/PricingModal';
+import { LicenseProvider, useLicense } from './context/LicenseContext';
 import { XtreamAccount, DatabaseStats } from './types';
+import { Lock, Crown, KeyRound, Terminal, Sparkles } from 'lucide-react';
 
-export default function App() {
+function AppContent() {
   const [activeTab, setActiveTab] = useState<'validator' | 'database' | 'single' | 'python'>('validator');
   const [stats, setStats] = useState<DatabaseStats | null>(null);
   const [inspectAccount, setInspectAccount] = useState<XtreamAccount | null>(null);
@@ -19,6 +22,8 @@ export default function App() {
     return localStorage.getItem('xval_admin_authenticated') === 'true';
   });
   const [isAdminModalOpen, setIsAdminModalOpen] = useState<boolean>(false);
+
+  const { isPro, openUpgradeModal } = useLicense();
 
   const fetchDbStats = async () => {
     try {
@@ -69,6 +74,8 @@ export default function App() {
     }
   };
 
+  const isPythonAllowed = isPro || isAdminAuthenticated;
+
   return (
     <div className="min-h-screen bg-[#0A0A0C] text-[#D1D1D1] flex flex-col font-sans selection:bg-indigo-600 selection:text-white">
       {/* Top Desktop Navigation */}
@@ -110,30 +117,55 @@ export default function App() {
         </div>
 
         <div className={activeTab === 'python' ? 'block' : 'hidden'}>
-          {isAdminAuthenticated ? (
+          {isPythonAllowed ? (
             <PythonStudioTab
               onRefreshDb={fetchDbStats}
               onLockAdmin={() => {
                 localStorage.removeItem('xval_admin_authenticated');
                 setIsAdminAuthenticated(false);
-                setActiveTab('validator');
+                if (!isPro) {
+                  setActiveTab('validator');
+                }
               }}
             />
           ) : (
-            <div className="bg-[#111114] border border-[#242428] rounded-2xl p-12 text-center max-w-lg mx-auto my-12 space-y-4 shadow-xl">
+            <div className="bg-[#111114] border border-[#242428] rounded-2xl p-8 sm:p-12 text-center max-w-lg mx-auto my-12 space-y-5 shadow-2xl">
               <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mx-auto text-amber-400">
-                <span className="text-2xl">🔒</span>
+                <Lock className="w-8 h-8 text-amber-400" />
               </div>
-              <h3 className="text-xl font-bold text-white tracking-tight">Owner-Only Workspace</h3>
-              <p className="text-xs text-gray-400 leading-relaxed">
-                The Python Desktop Studio & Source Code files are locked to prevent unauthorized visitors from accessing raw source scripts.
-              </p>
-              <button
-                onClick={() => setIsAdminModalOpen(true)}
-                className="px-6 py-2.5 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-black font-bold rounded-xl text-xs shadow-lg shadow-amber-600/20 transition-all cursor-pointer"
-              >
-                Unlock with Admin Passkey
-              </button>
+              <div>
+                <h3 className="text-xl font-bold text-white tracking-tight">Python Desktop Studio & Source</h3>
+                <p className="text-xs text-gray-400 leading-relaxed mt-1">
+                  The Python Desktop GUI (.py source, executable, and standalone offline suite) is available for <strong>Pro License</strong> holders or the master owner.
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <button
+                  onClick={() => openUpgradeModal('pricing')}
+                  className="flex-1 py-3 px-4 bg-gradient-to-r from-amber-500 to-amber-400 hover:brightness-110 text-black font-extrabold rounded-xl text-xs shadow-lg shadow-amber-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Crown className="w-4 h-4 fill-black" />
+                  <span>Get Pro License ($9.99)</span>
+                </button>
+
+                <button
+                  onClick={() => openUpgradeModal('activate')}
+                  className="py-3 px-4 bg-[#1C1C22] hover:bg-[#26262E] text-indigo-300 font-bold rounded-xl text-xs border border-indigo-500/30 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <KeyRound className="w-4 h-4 text-indigo-400" />
+                  <span>Enter Key</span>
+                </button>
+              </div>
+
+              <div className="pt-3 border-t border-[#1E1E24]">
+                <button
+                  onClick={() => setIsAdminModalOpen(true)}
+                  className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                >
+                  Owner login with Admin Passkey
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -148,7 +180,7 @@ export default function App() {
         <div className="flex items-center gap-4 uppercase tracking-widest text-[10px]">
           <span className="hover:text-gray-300 transition-colors">M3U8 Stream Engine</span>
           <span className="text-gray-600">•</span>
-          <span className="hover:text-gray-300 transition-colors">Concurrent Pool</span>
+          <span className="hover:text-gray-300 transition-colors">HWID Shield Active</span>
           <span className="text-gray-600">•</span>
           <span className="text-indigo-400 font-semibold">Auto-Sync On</span>
         </div>
@@ -178,6 +210,17 @@ export default function App() {
           setActiveTab('python');
         }}
       />
+
+      {/* License & Pricing Checkout Modal */}
+      <PricingModal />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <LicenseProvider>
+      <AppContent />
+    </LicenseProvider>
   );
 }

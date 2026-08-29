@@ -16,10 +16,13 @@ import {
   Eye,
   EyeOff,
   Filter,
-  Sparkles
+  Sparkles,
+  Crown,
+  Lock
 } from 'lucide-react';
 import { XtreamAccount, ParseResult } from '../types';
 import { parseXtreamTextClient } from '../utils/parser';
+import { useLicense } from '../context/LicenseContext';
 
 interface BatchValidatorTabProps {
   onAccountValidated: (account: XtreamAccount) => void;
@@ -34,6 +37,7 @@ export const BatchValidatorTab: React.FC<BatchValidatorTabProps> = ({
   onOpenAccountDetail,
   onValidationStateChange,
 }) => {
+  const { isPro, freeScanLimit, openUpgradeModal } = useLicense();
   const [inputText, setInputText] = useState<string>('');
   const [parsedInfo, setParsedInfo] = useState<ParseResult | null>(null);
   const [concurrency, setConcurrency] = useState<number>(10);
@@ -145,11 +149,16 @@ http://stream.nordic-tv.com:8000|nordic_vip|nordic_pass_332`
   const startValidation = async () => {
     if (!parsedInfo || parsedInfo.accounts.length === 0) return;
 
+    // Free Tier limit enforcement: 5 lines maximum
+    let accountsToCheck = [...parsedInfo.accounts];
+    if (!isPro && accountsToCheck.length > freeScanLimit) {
+      accountsToCheck = accountsToCheck.slice(0, freeScanLimit);
+    }
+
     setIsValidating(true);
     stopRequestedRef.current = false;
     setLiveResults([]);
 
-    const accountsToCheck = [...parsedInfo.accounts];
     const total = accountsToCheck.length;
     const startTime = Date.now();
 
@@ -369,17 +378,38 @@ domain.com:80|user|pass`}
 
             {/* Parse Summary Bar */}
             {parsedInfo && (
-              <div className="mt-3 p-2.5 bg-[#0A0A0C] rounded-lg border border-[#242428] flex items-center justify-between text-xs font-mono">
-                <div className="flex items-center gap-4">
-                  <span className="text-gray-400">
-                    Recognized Accounts: <strong className="text-emerald-400 font-semibold">{parsedInfo.validLines}</strong>
-                  </span>
-                  <span className="text-[#242428]">|</span>
-                  <span className="text-gray-500">
-                    Comment/Blank lines: {parsedInfo.totalLines - parsedInfo.validLines}
-                  </span>
+              <div className="mt-3 space-y-2">
+                <div className="p-2.5 bg-[#0A0A0C] rounded-lg border border-[#242428] flex items-center justify-between text-xs font-mono">
+                  <div className="flex items-center gap-4">
+                    <span className="text-gray-400">
+                      Recognized Accounts: <strong className="text-emerald-400 font-semibold">{parsedInfo.validLines}</strong>
+                    </span>
+                    <span className="text-[#242428]">|</span>
+                    <span className="text-gray-500">
+                      Comment/Blank lines: {parsedInfo.totalLines - parsedInfo.validLines}
+                    </span>
+                  </div>
+                  <span className="text-indigo-400 text-[11px]">Ready for multi-threaded test</span>
                 </div>
-                <span className="text-indigo-400 text-[11px]">Ready for multi-threaded test</span>
+
+                {!isPro && parsedInfo.validLines > freeScanLimit && (
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2 text-amber-300">
+                      <Lock className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                      <span>
+                        <strong>Free Tier Notice:</strong> Scanning is limited to the first <strong>5 accounts</strong>.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => openUpgradeModal('pricing')}
+                      className="px-3 py-1 bg-gradient-to-r from-amber-500 to-amber-400 hover:brightness-110 text-black font-extrabold rounded-md text-[11px] flex items-center gap-1 shadow-sm flex-shrink-0 cursor-pointer"
+                    >
+                      <Crown className="w-3 h-3 fill-black" />
+                      <span>Unlock Unlimited (10,000+)</span>
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -494,7 +524,13 @@ domain.com:80|user|pass`}
                   className="flex-1 py-2.5 px-4 rounded-md bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:pointer-events-none text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-sm transition-colors cursor-pointer"
                 >
                   <Play className="w-3.5 h-3.5 fill-white" />
-                  Start Batch Validation ({parsedInfo?.validLines || 0})
+                  <span>
+                    Start Batch Validation (
+                    {!isPro && (parsedInfo?.validLines || 0) > freeScanLimit
+                      ? `First ${freeScanLimit} of ${parsedInfo?.validLines} lines`
+                      : `${parsedInfo?.validLines || 0} lines`}
+                    )
+                  </span>
                 </button>
               ) : (
                 <button

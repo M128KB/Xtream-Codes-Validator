@@ -5,10 +5,13 @@ import {
   FileText,
   FileSpreadsheet,
   Database,
-  Code2,
   Tv,
-  CheckCircle2
+  Crown,
+  Lock,
+  Zap,
+  Sparkles
 } from 'lucide-react';
+import { useLicense } from '../context/LicenseContext';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -16,12 +19,19 @@ interface ExportModalProps {
 }
 
 export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => {
+  const { isPro, openUpgradeModal } = useLicense();
   const [format, setFormat] = useState<'m3u' | 'csv' | 'txt' | 'json' | 'sqlite'>('m3u');
   const [statusFilter, setStatusFilter] = useState<'Valid' | 'All' | 'Expired'>('Valid');
 
   if (!isOpen) return null;
 
   const handleDownload = () => {
+    if (!isPro) {
+      onClose();
+      openUpgradeModal('pricing');
+      return;
+    }
+
     if (format === 'sqlite') {
       window.location.href = '/api/db/download-sqlite';
     } else {
@@ -32,7 +42,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-[#111114] border border-[#242428] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+      <div className="bg-[#111114] border border-[#242428] rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in duration-150">
         {/* Header */}
         <div className="px-6 py-4 border-b border-[#242428] flex items-center justify-between bg-[#0E0E11]">
           <div className="flex items-center gap-2.5">
@@ -49,6 +59,29 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
 
         {/* Content */}
         <div className="p-6 space-y-5 text-xs">
+          {!isPro && (
+            <div className="bg-gradient-to-br from-[#1A1610] to-[#121014] border border-amber-500/30 rounded-xl p-4 space-y-3">
+              <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+                <Crown className="w-4 h-4 text-amber-400" />
+                <span>Pro Feature: Unlimited M3U & CSV Playlist Export</span>
+              </div>
+              <p className="text-gray-300 leading-relaxed text-xs">
+                Exporting clean <strong>.M3U playlists</strong>, formatted <strong>.CSV spreadsheets</strong>, and raw <strong>SQLite databases</strong> is exclusively enabled on the Pro Tier.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  openUpgradeModal('pricing');
+                }}
+                className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-amber-400 hover:brightness-110 text-black font-extrabold rounded-lg text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 cursor-pointer"
+              >
+                <Zap className="w-3.5 h-3.5 fill-black" />
+                <span>Upgrade to Pro to Unlock Instant Downloads ($9.99)</span>
+              </button>
+            </div>
+          )}
+
           {/* Format selection */}
           <div className="space-y-2">
             <label className="font-semibold text-white block">1. Select Export Format:</label>
@@ -159,10 +192,14 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
           <button
             type="button"
             onClick={handleDownload}
-            className="px-5 py-2 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+            className={`px-5 py-2 rounded-md text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer ${
+              isPro
+                ? 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                : 'bg-gradient-to-r from-amber-500 to-amber-400 text-black font-extrabold hover:brightness-110'
+            }`}
           >
-            <Download className="w-3.5 h-3.5" />
-            <span>Download Export</span>
+            {isPro ? <Download className="w-3.5 h-3.5" /> : <Crown className="w-3.5 h-3.5 fill-black" />}
+            <span>{isPro ? 'Download Export' : 'Upgrade to Download'}</span>
           </button>
         </div>
       </div>

@@ -44,3 +44,33 @@ export interface DatabaseStats {
   expiringSoon: number; // in next 7 days
   totalMaxConnections: number;
 }
+
+export type LicenseTier = 'free' | 'standard' | 'pro_vip';
+
+export interface LicenseDevice {
+  hwid: string;
+  name: string;
+  lastSeen: string;
+  isCurrent: boolean;
+}
+
+export interface LicenseInfo {
+  key: string;
+  tier: 'standard' | 'pro_vip';
+  email: string;
+  maxDevices: number;
+  devicesCount: number;
+  devices: LicenseDevice[];
+  createdAt?: string;
+  status?: string;
+}
+
+export interface PaymentOrder {
+  orderId: string;
+  tier: 'standard' | 'pro_vip';
+  email: string;
+  amountUsd: number;
+  paymentMethod: 'crypto_binance' | 'crypto_cryptocom' | 'crypto_usdt' | 'crypto_btc' | 'payoneer';
+  createdAt: number;
+}
+
