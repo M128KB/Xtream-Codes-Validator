@@ -62,6 +62,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
   const [activeVodStream, setActiveVodStream] = useState<VodStreamItem | null>(null);
   const [epgListings, setEpgListings] = useState<EpgProgram[]>([]);
   const [loadingEpg, setLoadingEpg] = useState(false);
+  const [mobileTab, setMobileTab] = useState<'channels' | 'player' | 'categories'>('player');
   const [streamError, setStreamError] = useState<string | null>(null);
 
   // Player controls state
@@ -107,7 +108,22 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
     }
 
     const timer = setTimeout(checkCast, 2000);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      if (hlsRef.current) {
+        try {
+          hlsRef.current.destroy();
+        } catch (_) {}
+        hlsRef.current = null;
+      }
+      if (videoRef.current) {
+        try {
+          videoRef.current.pause();
+          videoRef.current.removeAttribute('src');
+          videoRef.current.load();
+        } catch (_) {}
+      }
+    };
   }, []);
 
   // Update credentials if initialAccount prop changes
@@ -228,6 +244,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
     setActiveVodStream(null);
     setStreamError(null);
     setEpgListings([]);
+    setMobileTab('player'); // Automatically switch to player view on mobile
 
     // Fetch EPG listings
     loadEpg(stream.stream_id);
@@ -243,6 +260,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
     setActiveLiveStream(null);
     setStreamError(null);
     setEpgListings([]);
+    setMobileTab('player'); // Automatically switch to player view on mobile
 
     const ext = stream.container_extension || 'mp4';
     const streamUrl = `/api/stream/vod/${stream.stream_id}?host=${encodeURIComponent(activeAccount.domain)}&user=${encodeURIComponent(activeAccount.username)}&pass=${encodeURIComponent(activeAccount.password)}&container=${ext}`;
@@ -255,16 +273,45 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
     }
   };
 
+  // Safe Video Playback to prevent "The play() request was interrupted by a new load request"
+  const safePlay = async (video: HTMLVideoElement | null) => {
+    if (!video) return;
+    try {
+      const playPromise = video.play();
+      if (playPromise !== undefined) {
+        await playPromise;
+        setIsPlaying(true);
+      }
+    } catch (err: any) {
+      // Ignore AbortError / interruptions caused by changing streams rapidly or pausing
+      if (
+        err.name === 'AbortError' ||
+        err.name === 'NotAllowedError' ||
+        err.message?.includes('interrupted') ||
+        err.message?.includes('The play() request was interrupted')
+      ) {
+        return;
+      }
+      setIsPlaying(false);
+    }
+  };
+
   // Setup HLS.js instance
   const setupHlsPlayer = (srcUrl: string, isLive: boolean) => {
     if (!videoRef.current) return;
     const video = videoRef.current;
 
-    // Destroy existing Hls instance
+    // Destroy existing Hls instance safely
     if (hlsRef.current) {
-      hlsRef.current.destroy();
+      try {
+        hlsRef.current.destroy();
+      } catch (_) {}
       hlsRef.current = null;
     }
+
+    try {
+      video.pause();
+    } catch (_) {}
 
     if (Hls.isSupported()) {
       const hls = new Hls({
@@ -279,7 +326,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
-        video.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+        safePlay(video);
         if (data.levels && data.levels.length > 0) {
           const lvl = data.levels[0];
           setHlsStats({
@@ -313,7 +360,9 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
               break;
             default:
               setStreamError(`Fatal playback error: ${data.details}`);
-              hls.destroy();
+              try {
+                hls.destroy();
+              } catch (_) {}
               break;
           }
         }
@@ -323,7 +372,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       // Native Apple Safari HLS
       video.src = srcUrl;
-      video.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+      safePlay(video);
     } else {
       setStreamError('Your browser does not support HLS media playback.');
     }
@@ -334,15 +383,18 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
     if (!videoRef.current) return;
     const video = videoRef.current;
     if (hlsRef.current) {
-      hlsRef.current.destroy();
+      try {
+        hlsRef.current.destroy();
+      } catch (_) {}
       hlsRef.current = null;
     }
 
+    try {
+      video.pause();
+    } catch (_) {}
+
     video.src = srcUrl;
-    video.play().then(() => setIsPlaying(true)).catch((err) => {
-      setStreamError(`Unable to play video: ${err.message}`);
-      setIsPlaying(false);
-    });
+    safePlay(video);
   };
 
   // Handle Manual Connection
@@ -369,12 +421,11 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
   // Playback Control Handlers
   const togglePlay = () => {
     if (!videoRef.current) return;
-    if (isPlaying) {
+    if (!videoRef.current.paused) {
       videoRef.current.pause();
       setIsPlaying(false);
     } else {
-      videoRef.current.play();
-      setIsPlaying(true);
+      safePlay(videoRef.current);
     }
   };
 
@@ -527,11 +578,50 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
         </form>
       </div>
 
-      {/* Main Player Workspace: 3 Column Layout (Categories | Channel List | Video & EPG) */}
-      <div className="flex-1 flex overflow-hidden">
+      {/* Mobile Screen Tab Navigation Bar */}
+      <div className="md:hidden bg-[#14141A] border-b border-[#24242E] px-2 py-1.5 flex items-center justify-around shrink-0 text-xs">
+        <button
+          onClick={() => setMobileTab('categories')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-semibold transition-all ${
+            mobileTab === 'categories'
+              ? 'bg-indigo-600 text-white shadow-sm'
+              : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          <Layers className="w-3.5 h-3.5" />
+          <span>Categories</span>
+        </button>
+        <button
+          onClick={() => setMobileTab('channels')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-semibold transition-all relative ${
+            mobileTab === 'channels'
+              ? 'bg-indigo-600 text-white shadow-sm'
+              : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          <Tv className="w-3.5 h-3.5" />
+          <span>Streams ({filteredStreams.length})</span>
+        </button>
+        <button
+          onClick={() => setMobileTab('player')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-semibold transition-all ${
+            mobileTab === 'player'
+              ? 'bg-indigo-600 text-white shadow-sm'
+              : 'text-gray-400 hover:text-white'
+          }`}
+        >
+          <Play className="w-3.5 h-3.5 fill-current" />
+          <span>Player {activeLiveStream ? '• Live' : ''}</span>
+        </button>
+      </div>
+
+      {/* Main Player Workspace: 3 Column Layout on Desktop, Tabbed on Mobile */}
+      <div className="flex-1 flex overflow-hidden relative">
         
         {/* Left Column: Mode (Live/VOD) & Category List */}
-        <div className="w-56 bg-[#0E0E12] border-r border-[#1E1E24] flex flex-col shrink-0">
+        <div className={`w-full md:w-56 bg-[#0E0E12] md:border-r border-[#1E1E24] flex flex-col shrink-0 ${
+          mobileTab === 'categories' ? 'flex' : 'hidden md:flex'
+        }`}>
           
           {/* Live vs VOD Toggle */}
           <div className="p-2 border-b border-[#1E1E24] grid grid-cols-2 gap-1.5 bg-[#121216]">
@@ -576,8 +666,11 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
           {/* Category List */}
           <div className="flex-1 overflow-y-auto divide-y divide-[#16161C] custom-scrollbar">
             <button
-              onClick={() => setSelectedCategoryId('all')}
-              className={`w-full text-left px-3 py-2 text-xs font-medium flex items-center justify-between transition-colors cursor-pointer ${
+              onClick={() => {
+                setSelectedCategoryId('all');
+                setMobileTab('channels');
+              }}
+              className={`w-full text-left px-3 py-2.5 text-xs font-medium flex items-center justify-between transition-colors cursor-pointer ${
                 selectedCategoryId === 'all'
                   ? 'bg-indigo-600/15 text-indigo-300 font-bold border-l-2 border-indigo-500'
                   : 'text-gray-300 hover:bg-[#15151B] hover:text-white'
@@ -589,8 +682,11 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
             {categories.map((cat) => (
               <button
                 key={cat.category_id}
-                onClick={() => setSelectedCategoryId(cat.category_id)}
-                className={`w-full text-left px-3 py-2 text-xs font-medium flex items-center justify-between transition-colors cursor-pointer ${
+                onClick={() => {
+                  setSelectedCategoryId(cat.category_id);
+                  setMobileTab('channels');
+                }}
+                className={`w-full text-left px-3 py-2.5 text-xs font-medium flex items-center justify-between transition-colors cursor-pointer ${
                   selectedCategoryId === cat.category_id
                     ? 'bg-indigo-600/15 text-indigo-300 font-bold border-l-2 border-indigo-500'
                     : 'text-gray-400 hover:bg-[#15151B] hover:text-gray-200'
@@ -609,7 +705,9 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
         </div>
 
         {/* Middle Column: Stream/Channel List */}
-        <div className="w-72 bg-[#121217] border-r border-[#1E1E24] flex flex-col shrink-0">
+        <div className={`w-full md:w-72 bg-[#121217] md:border-r border-[#1E1E24] flex flex-col shrink-0 ${
+          mobileTab === 'channels' ? 'flex' : 'hidden md:flex'
+        }`}>
           
           {/* Search Box */}
           <div className="p-2 border-b border-[#1E1E24] bg-[#0E0E12]">
@@ -724,7 +822,9 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
         </div>
 
         {/* Right Column: High Performance Video Player & EPG Schedule */}
-        <div className="flex-1 flex flex-col bg-[#070709] overflow-y-auto custom-scrollbar">
+        <div className={`w-full flex-1 flex-col bg-[#070709] overflow-y-auto custom-scrollbar ${
+          mobileTab === 'player' ? 'flex' : 'hidden md:flex'
+        }`}>
           
           {/* Active Stream Title Banner */}
           <div className="bg-[#121217] border-b border-[#1E1E24] px-4 py-2.5 flex items-center justify-between shrink-0">
@@ -797,6 +897,9 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
                   ? 'aspect-[4/3] object-contain'
                   : 'object-cover'
               }`}
+              onPlay={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
+              onError={() => setIsPlaying(false)}
               onTimeUpdate={() => {
                 if (videoRef.current) {
                   setCurrentTime(videoRef.current.currentTime);
