@@ -25,7 +25,11 @@ import {
   verifyOrActivateLicense,
   disconnectDevice,
   createNewLicense,
-  getAllLicenses
+  getAllLicenses,
+  submitPaymentOrder,
+  getAllPaymentOrders,
+  adminApprovePaymentOrder,
+  adminRejectPaymentOrder
 } from './server/license.js';
 
 async function startServer() {
@@ -301,29 +305,75 @@ async function startServer() {
     }
   });
 
-  app.post('/api/license/order', (req, res) => {
+  app.post('/api/license/order', async (req, res) => {
     try {
-      const { email, tier, paymentMethod, paymentRef, notes } = req.body;
-      if (!email || !tier || !paymentMethod) {
-        return res.status(400).json({ success: false, error: 'Email, tier, and payment method are required.' });
+      const { email, tier, paymentType, txHash, notes } = req.body;
+      if (!email || !tier) {
+        return res.status(400).json({ success: false, error: 'Email and tier are required.' });
       }
 
-      const cleanTier = tier === 'pro_vip' ? 'pro_vip' : 'standard';
-      const newLic = createNewLicense({
+      const result = await submitPaymentOrder({
         email,
-        tier: cleanTier,
-        paymentMethod,
-        paymentRef,
-        notes
+        tier: tier === 'pro_vip' ? 'pro_vip' : 'standard',
+        paymentType: paymentType === 'okx_trc20' ? 'okx_trc20' : 'okx_internal',
+        txHash: txHash || '',
+        notes: notes || ''
       });
 
-      res.json({ success: true, license: newLic });
+      res.json(result);
     } catch (e: any) {
       res.status(500).json({ success: false, error: e.message });
     }
   });
 
-  // Admin Licenses API
+  // Admin Licenses & Orders API
+  app.get('/api/admin/orders', (req, res) => {
+    try {
+      const adminPin = req.headers['x-admin-pin'];
+      if (!adminPin || (adminPin !== '90tech' && adminPin !== 'admin123')) {
+        return res.status(403).json({ error: 'Unauthorized admin access' });
+      }
+      const orders = getAllPaymentOrders();
+      res.json({ orders });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/admin/orders/approve', (req, res) => {
+    try {
+      const adminPin = req.headers['x-admin-pin'];
+      if (!adminPin || (adminPin !== '90tech' && adminPin !== 'admin123')) {
+        return res.status(403).json({ error: 'Unauthorized admin access' });
+      }
+      const { orderId } = req.body;
+      if (!orderId) {
+        return res.status(400).json({ error: 'orderId is required' });
+      }
+      const result = adminApprovePaymentOrder(orderId);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/admin/orders/reject', (req, res) => {
+    try {
+      const adminPin = req.headers['x-admin-pin'];
+      if (!adminPin || (adminPin !== '90tech' && adminPin !== 'admin123')) {
+        return res.status(403).json({ error: 'Unauthorized admin access' });
+      }
+      const { orderId, reason } = req.body;
+      if (!orderId) {
+        return res.status(400).json({ error: 'orderId is required' });
+      }
+      const result = adminRejectPaymentOrder(orderId, reason);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.get('/api/admin/licenses', (req, res) => {
     try {
       const adminPin = req.headers['x-admin-pin'];

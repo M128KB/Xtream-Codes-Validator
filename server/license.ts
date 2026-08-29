@@ -23,6 +23,20 @@ export interface LicenseDeviceRecord {
   created_at: string;
 }
 
+export interface PaymentOrderRecord {
+  id: number;
+  order_id: string;
+  email: string;
+  tier: 'standard' | 'pro_vip';
+  amount_usd: number;
+  payment_type: 'okx_internal' | 'okx_trc20';
+  tx_hash: string;
+  status: 'pending' | 'approved' | 'rejected';
+  license_key: string | null;
+  created_at: string;
+  notes: string;
+}
+
 export function initLicenseTables() {
   const db = getDatabase();
   
@@ -59,8 +73,23 @@ export function initLicenseTables() {
       action TEXT DEFAULT 'verify'
     );
 
+    CREATE TABLE IF NOT EXISTS payment_orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id TEXT UNIQUE NOT NULL,
+      email TEXT NOT NULL,
+      tier TEXT NOT NULL,
+      amount_usd REAL NOT NULL,
+      payment_type TEXT NOT NULL,
+      tx_hash TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      license_key TEXT,
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      notes TEXT DEFAULT ''
+    );
+
     CREATE INDEX IF NOT EXISTS idx_logs_key_time ON license_access_logs(license_key, timestamp);
     CREATE INDEX IF NOT EXISTS idx_dev_key ON license_devices(license_key);
+    CREATE INDEX IF NOT EXISTS idx_orders_status ON payment_orders(status);
   `);
 
   // Seed default master owner licenses if they don't exist
@@ -288,6 +317,261 @@ export function createNewLicense(params: {
   };
 }
 
+export const TARGET_TRC20_WALLET = 'TQEVdoX82yQsj5gS9N8p52cH2panqUHTK3';
+export const TARGET_OKX_EMAIL = 'm.128kb@gmail.com';
+
+/**
+ * Verifies on-chain Tron USDT (TRC-20) transaction using TronGrid public API
+ */
+export async function verifyTronTrc20Transaction(txHash: string, expectedUsd: number): Promise<{
+  valid: boolean;
+  amount?: number;
+  from?: string;
+  to?: string;
+  error?: string;
+}> {
+  const cleanTx = (txHash || '').trim().replace(/^0x/, '');
+  if (!cleanTx || cleanTx.length < 32) {
+    return { valid: false, error: 'Invalid TRON transaction hash format.' };
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    const url = `https://api.trongrid.io/v1/transactions/${cleanTx}/events`;
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { 'Accept': 'application/json' }
+    });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      return { valid: false, error: `TronGrid API returned HTTP ${res.status}` };
+    }
+
+    const data = (await res.json()) as any;
+    if (!data.data || !Array.isArray(data.data) || data.data.length === 0) {
+      return { valid: false, error: 'Transaction not found or has not confirmed yet on TRON.' };
+    }
+
+    // Look for Transfer event for USDT contract TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t
+    const transferEvent = data.data.find((e: any) => {
+      return (
+        e.event_name === 'Transfer' &&
+        (e.result?.to === TARGET_TRC20_WALLET || e.result?.recipient === TARGET_TRC20_WALLET)
+      );
+    });
+
+    if (!transferEvent) {
+      return {
+        valid: false,
+        error: `Transaction was not sent to official deposit wallet ${TARGET_TRC20_WALLET}.`
+      };
+    }
+
+    const rawValue = transferEvent.result?.value || transferEvent.result?.amount || 0;
+    // USDT has 6 decimals on Tron
+    const amountUsdt = Number(rawValue) / 1000000;
+
+    // Tolerate minor network fee difference (e.g. 9.5 vs 9.99 or 19.5 vs 19.99)
+    const minRequired = expectedUsd * 0.95;
+    if (amountUsdt < minRequired) {
+      return {
+        valid: false,
+        amount: amountUsdt,
+        error: `Received ${amountUsdt} USDT, which is less than the required $${expectedUsd}.`
+      };
+    }
+
+    return {
+      valid: true,
+      amount: amountUsdt,
+      from: transferEvent.result?.from,
+      to: TARGET_TRC20_WALLET
+    };
+  } catch (err: any) {
+    console.error('TronGrid verification error:', err);
+    return {
+      valid: false,
+      error: err.name === 'AbortError' ? 'TronGrid API timed out. Try again shortly.' : (err.message || 'Tron validation network error')
+    };
+  }
+}
+
+/**
+ * Submits a new payment order for verification (requires valid TxID/Memo)
+ */
+export async function submitPaymentOrder(params: {
+  email: string;
+  tier: 'standard' | 'pro_vip';
+  paymentType: 'okx_internal' | 'okx_trc20';
+  txHash: string;
+  notes?: string;
+}): Promise<{
+  success: boolean;
+  order?: PaymentOrderRecord;
+  autoActivated?: boolean;
+  licenseKey?: string;
+  error?: string;
+}> {
+  const db = getDatabase();
+  const email = (params.email || '').trim();
+  const txHash = (params.txHash || '').trim();
+  const tier = params.tier === 'pro_vip' ? 'pro_vip' : 'standard';
+  const amountUsd = tier === 'pro_vip' ? 19.99 : 9.99;
+
+  if (!email || !email.includes('@')) {
+    return { success: false, error: 'Valid email address is required.' };
+  }
+
+  if (!txHash) {
+    return {
+      success: false,
+      error: params.paymentType === 'okx_internal'
+        ? 'Please provide your OKX Transfer ID or sender email to verify payment.'
+        : 'Please provide the TRON USDT (TRC-20) Transaction Hash (TxID).'
+    };
+  }
+
+  // Anti-replay: Check if this TxID has already been used for an approved order or active license
+  const existingOrderStmt = db.prepare(`
+    SELECT * FROM payment_orders 
+    WHERE tx_hash = ? AND status = 'approved'
+  `);
+  const usedOrder = existingOrderStmt.get(txHash) as unknown as PaymentOrderRecord | undefined;
+  if (usedOrder) {
+    return { success: false, error: 'This Transaction Hash / Reference has already been used and redeemed.' };
+  }
+
+  const orderId = `OKX-${Date.now().toString(36).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
+  const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+
+  // If TRC-20 on-chain with full hash: Attempt automatic on-chain blockchain verification!
+  let autoActivated = false;
+  let issuedKey: string | null = null;
+  let initialStatus: 'pending' | 'approved' = 'pending';
+  let verificationNote = params.notes || '';
+
+  if (params.paymentType === 'okx_trc20' && txHash.length >= 32) {
+    const onChainResult = await verifyTronTrc20Transaction(txHash, amountUsd);
+    if (onChainResult.valid) {
+      // Blockchain confirmed! Auto-issue license key immediately
+      const newLicense = createNewLicense({
+        tier,
+        email,
+        paymentMethod: 'okx_trc20_verified',
+        paymentRef: txHash,
+        notes: `Auto-verified on TRON blockchain ($${onChainResult.amount} USDT from ${onChainResult.from})`
+      });
+
+      autoActivated = true;
+      issuedKey = newLicense.key;
+      initialStatus = 'approved';
+      verificationNote = `Auto-verified on TRON network. Received ${onChainResult.amount} USDT`;
+    }
+  }
+
+  const insertStmt = db.prepare(`
+    INSERT INTO payment_orders (order_id, email, tier, amount_usd, payment_type, tx_hash, status, license_key, created_at, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  insertStmt.run(
+    orderId,
+    email,
+    tier,
+    amountUsd,
+    params.paymentType,
+    txHash,
+    initialStatus,
+    issuedKey,
+    now,
+    verificationNote
+  );
+
+  const getStmt = db.prepare('SELECT * FROM payment_orders WHERE order_id = ?');
+  const orderRecord = getStmt.get(orderId) as unknown as PaymentOrderRecord;
+
+  return {
+    success: true,
+    order: orderRecord,
+    autoActivated,
+    licenseKey: issuedKey || undefined
+  };
+}
+
+/**
+ * Retrieve all payment orders for admin review
+ */
+export function getAllPaymentOrders(): PaymentOrderRecord[] {
+  const db = getDatabase();
+  const stmt = db.prepare('SELECT * FROM payment_orders ORDER BY id DESC LIMIT 200');
+  return stmt.all() as unknown as PaymentOrderRecord[];
+}
+
+/**
+ * Admin action: Approve order and generate license key
+ */
+export function adminApprovePaymentOrder(orderId: string): {
+  success: boolean;
+  order?: PaymentOrderRecord;
+  license?: LicenseRecord;
+  error?: string;
+} {
+  const db = getDatabase();
+  const stmt = db.prepare('SELECT * FROM payment_orders WHERE order_id = ?');
+  const order = stmt.get(orderId) as unknown as PaymentOrderRecord | undefined;
+
+  if (!order) {
+    return { success: false, error: 'Order not found.' };
+  }
+
+  if (order.status === 'approved' && order.license_key) {
+    const licStmt = db.prepare('SELECT * FROM licenses WHERE key = ?');
+    const lic = licStmt.get(order.license_key) as unknown as LicenseRecord | undefined;
+    return { success: true, order, license: lic };
+  }
+
+  // Create license for the order
+  const newLic = createNewLicense({
+    tier: order.tier,
+    email: order.email,
+    paymentMethod: order.payment_type,
+    paymentRef: order.tx_hash,
+    notes: `Approved order ${order.order_id} by Owner Admin`
+  });
+
+  const updateStmt = db.prepare(`
+    UPDATE payment_orders 
+    SET status = 'approved', license_key = ? 
+    WHERE order_id = ?
+  `);
+  updateStmt.run(newLic.key, orderId);
+
+  const updatedOrder = stmt.get(orderId) as unknown as PaymentOrderRecord;
+
+  return {
+    success: true,
+    order: updatedOrder,
+    license: newLic
+  };
+}
+
+/**
+ * Admin action: Reject order
+ */
+export function adminRejectPaymentOrder(orderId: string, reason?: string): { success: boolean; error?: string } {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    UPDATE payment_orders 
+    SET status = 'rejected', notes = ? 
+    WHERE order_id = ?
+  `);
+  stmt.run(reason || 'Payment could not be confirmed in OKX', orderId);
+  return { success: true };
+}
+
 /**
  * Retrieve all licenses for admin / owner overview
  */
@@ -302,3 +586,4 @@ export function getAllLicenses(): Array<LicenseRecord & { devices_count: number 
   `);
   return stmt.all() as any;
 }
+

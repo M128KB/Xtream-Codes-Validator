@@ -66,11 +66,17 @@ export interface LicenseInfo {
 }
 
 export interface PaymentOrder {
-  orderId: string;
-  tier: 'standard' | 'pro_vip';
+  id?: number;
+  order_id: string;
   email: string;
-  amountUsd: number;
-  paymentMethod: 'okx_crypto' | 'okx_pay' | 'okx_usdt';
-  createdAt: number;
+  tier: 'standard' | 'pro_vip';
+  amount_usd: number;
+  payment_type: 'okx_internal' | 'okx_trc20';
+  tx_hash: string;
+  status: 'pending' | 'approved' | 'rejected';
+  license_key?: string | null;
+  created_at: string;
+  notes?: string;
 }
+
 
