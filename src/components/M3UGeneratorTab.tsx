@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Download, CheckSquare, Square, RefreshCw, FileAudio, Server, CheckCircle2, PlayCircle, Film, Tv, Video } from 'lucide-react';
+import { Download, CheckSquare, Square, RefreshCw, FileAudio, Server, CheckCircle2, PlayCircle, Film, Tv, Video, AlertTriangle } from 'lucide-react';
 import { XtreamAccount } from '../types';
 
 interface Category {
@@ -13,12 +13,12 @@ interface CategorySelection {
 }
 
 export default function M3UGeneratorTab({ 
-  onRefreshDb 
+  onRefreshDb, isActive 
 }: { 
-  onRefreshDb: () => void;
+  onRefreshDb: () => void; isActive?: boolean;
 }) {
   const [accounts, setAccounts] = useState<XtreamAccount[]>([]);
-  const [selectedAccountId, setSelectedAccountId] = useState<number | ''>('');
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('');
   
   const [isLoadingCats, setIsLoadingCats] = useState(false);
   const [liveCats, setLiveCats] = useState<Category[]>([]);
@@ -32,8 +32,10 @@ export default function M3UGeneratorTab({
 
   // Load valid accounts
   useEffect(() => {
-    fetchAccounts();
-  }, []);
+    if (isActive !== false) {
+      fetchAccounts();
+    }
+  }, [isActive]);
 
   const fetchAccounts = async () => {
     try {
@@ -49,7 +51,7 @@ export default function M3UGeneratorTab({
 
   const handleAccountSelect = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
-    setSelectedAccountId(val === '' ? '' : Number(val));
+    setSelectedAccountId(val);
     
     if (!val) {
       setLiveCats([]);
@@ -57,7 +59,7 @@ export default function M3UGeneratorTab({
       return;
     }
 
-    const acc = accounts.find(a => a.id === Number(val));
+    const acc = accounts.find(a => String(a.id) === val);
     if (!acc) return;
 
     setIsLoadingCats(true);
@@ -77,6 +79,10 @@ export default function M3UGeneratorTab({
 
       const live = await liveRes.json();
       const vod = await vodRes.json();
+      
+      if (live.error) console.error("Live TV Error:", live.error);
+      if (vod.error) console.error("VOD Error:", vod.error);
+
             setLiveCats(Array.isArray(live) ? live : []);
       setVodCats(Array.isArray(vod) ? vod : []);
             // Default all to selected
@@ -108,7 +114,7 @@ export default function M3UGeneratorTab({
   };
 
   const handleGenerate = async () => {
-    const acc = accounts.find(a => a.id === selectedAccountId);
+    const acc = accounts.find(a => String(a.id) === selectedAccountId);
     if (!acc) return;
 
     setIsGenerating(true);
@@ -290,9 +296,18 @@ export default function M3UGeneratorTab({
       ) : selectedAccountId ? (
         <>
           <div className="flex flex-col md:flex-row gap-4 flex-1 min-h-[400px]">
-            {renderCategoryList('Live TV', <Tv className="w-4 h-4 text-indigo-400" />, liveCats, selectedLive, setSelectedLive, 'live')}
-            {renderCategoryList('Movies (VOD)', <Film className="w-4 h-4 text-emerald-400" />, vodCats, selectedVod, setSelectedVod, 'vod')}
-            
+            {liveCats.length === 0 && vodCats.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-amber-500 border border-dashed border-amber-500/20 rounded-xl bg-amber-500/5">
+                <AlertTriangle className="w-10 h-10 mb-3 opacity-80" />
+                <p className="font-semibold text-lg text-amber-400">No categories found.</p>
+                <p className="text-sm opacity-80 mt-1 max-w-md text-center">This Xtream server returned empty categories. It may not support API category requests or the account lacks permissions.</p>
+              </div>
+            ) : (
+              <>
+                {renderCategoryList('Live TV', <Tv className="w-4 h-4 text-indigo-400" />, liveCats, selectedLive, setSelectedLive, 'live')}
+                {renderCategoryList('Movies (VOD)', <Film className="w-4 h-4 text-emerald-400" />, vodCats, selectedVod, setSelectedVod, 'vod')}
+              </>
+            )}
           </div>
           
           <div className="bg-[#111114] border border-[#242428] rounded-xl p-4 shadow-xl flex items-center justify-between mt-2">

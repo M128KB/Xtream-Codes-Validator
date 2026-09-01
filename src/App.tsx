@@ -156,6 +156,7 @@ function AppContent() {
         <div className={activeTab === 'm3u' ? 'block' : 'hidden'}>
           <M3UGeneratorTab 
             onRefreshDb={fetchDbStats} 
+            isActive={activeTab === 'm3u'}
           />
         </div>
 
