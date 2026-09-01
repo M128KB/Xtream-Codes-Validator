@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Navbar } from './components/Navbar';
 import { BatchValidatorTab } from './components/BatchValidatorTab';
 import { DatabaseManagerTab } from './components/DatabaseManagerTab';
+import M3UGeneratorTab from './components/M3UGeneratorTab';
 import { SingleTesterTab } from './components/SingleTesterTab';
 import { PythonStudioTab } from './components/PythonStudioTab';
 import { AccountDetailModal } from './components/AccountDetailModal';
@@ -146,11 +147,18 @@ function AppContent() {
           />
         </div>
 
+
         <div className={activeTab === 'single' ? 'block' : 'hidden'}>
           <SingleTesterTab
             onAccountSaved={() => fetchDbStats()}
           />
         </div>
+        <div className={activeTab === 'm3u' ? 'block' : 'hidden'}>
+          <M3UGeneratorTab 
+            onRefreshDb={fetchDbStats} 
+          />
+        </div>
+
 
         <div className={activeTab === 'player' ? 'block' : 'hidden'}>
           <WebPlayer

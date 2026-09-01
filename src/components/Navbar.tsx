@@ -1,5 +1,5 @@
 import React from 'react';
-import { Database, Zap, HardDrive, Terminal, Search, ShieldCheck, Download, Lock, Crown, Laptop, Tv } from 'lucide-react';
+import { Database, Zap, HardDrive, Terminal, Search, ShieldCheck, Download, Lock, Crown, Laptop, Tv, FileAudio } from 'lucide-react';
 import { DatabaseStats } from '../types';
 import { useLicense } from '../context/LicenseContext';
 
@@ -168,8 +168,22 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="whitespace-nowrap">Single Tester</span>
           </button>
 
+
+          <button
+            id="tab-m3u-btn"
+            onClick={() => setActiveTab('m3u')}
+            className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-md text-xs font-medium transition-all shrink-0 cursor-pointer ${
+              activeTab === 'm3u'
+                ? 'bg-indigo-600 text-white shadow-sm font-semibold'
+                : 'text-gray-400 hover:text-white hover:bg-[#1C1C21]'
+            }`}
+          >
+            <FileAudio className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="whitespace-nowrap">M3U Generator</span>
+          </button>
           <button
             id="tab-player-btn"
+
             onClick={() => setActiveTab('player')}
             className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-md text-xs font-medium transition-all shrink-0 cursor-pointer ${
               activeTab === 'player'
