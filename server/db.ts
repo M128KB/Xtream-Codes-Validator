@@ -8,21 +8,71 @@ if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-const DB_PATH = path.join(DATA_DIR, 'xtream_accounts.db');
-
-let dbInstance: DatabaseSync | null = null;
-
-export function getDatabase(): DatabaseSync {
-  if (!dbInstance) {
-    dbInstance = new DatabaseSync(DB_PATH);
-    initTables(dbInstance);
-    initLicenseTables();
-  }
-  return dbInstance;
+const USERS_DATA_DIR = path.join(DATA_DIR, 'users');
+if (!fs.existsSync(USERS_DATA_DIR)) {
+  fs.mkdirSync(USERS_DATA_DIR, { recursive: true });
 }
 
-export function getDatabasePath(): string {
-  return DB_PATH;
+// Master System DB for Global Licensing & Orders
+const SYSTEM_DB_PATH = path.join(DATA_DIR, 'system_master.db');
+let systemDbInstance: DatabaseSync | null = null;
+
+// Cache map of active per-user SQLite database instances
+const userDbInstances = new Map<string, DatabaseSync>();
+
+export function sanitizeUserId(userId?: string): string {
+  if (!userId) return 'default_user';
+  const cleaned = String(userId)
+    .trim()
+    .replace(/[^a-zA-Z0-9_\-]/g, '_')
+    .substring(0, 64);
+  return cleaned || 'default_user';
+}
+
+export function getSystemDatabase(): DatabaseSync {
+  if (!systemDbInstance) {
+    systemDbInstance = new DatabaseSync(SYSTEM_DB_PATH);
+  }
+  return systemDbInstance;
+}
+
+export function getUserDatabasePath(userId?: string): string {
+  const cleanId = sanitizeUserId(userId);
+  return path.join(USERS_DATA_DIR, `user_${cleanId}.db`);
+}
+
+export function getUserDatabaseFilename(userId?: string): string {
+  const cleanId = sanitizeUserId(userId);
+  const shortId = cleanId.length > 18 ? cleanId.substring(0, 18) : cleanId;
+  return `xtream_user_${shortId}.db`;
+}
+
+export function getUserDatabase(userId?: string): DatabaseSync {
+  const cleanId = sanitizeUserId(userId);
+  let db = userDbInstances.get(cleanId);
+  if (!db) {
+    const dbFilePath = getUserDatabasePath(cleanId);
+    db = new DatabaseSync(dbFilePath);
+    initTables(db);
+    userDbInstances.set(cleanId, db);
+  }
+  return db;
+}
+
+export function getDatabase(userId?: string): DatabaseSync {
+  return getUserDatabase(userId);
+}
+
+export function getDatabasePath(userId?: string): string {
+  return getUserDatabasePath(userId);
+}
+
+// Initialize system tables and default license store on startup
+try {
+  const sysDb = getSystemDatabase();
+  initLicenseTables(sysDb);
+} catch (e) {
+  console.error('System DB init error:', e);
 }
 
 function initTables(db: DatabaseSync) {
@@ -68,8 +118,8 @@ export interface SaveAccountInput {
   raw_data?: any;
 }
 
-export function saveAccountToDb(account: SaveAccountInput): number {
-  const db = getDatabase();
+export function saveAccountToDb(account: SaveAccountInput, userId?: string): number {
+  const db = getUserDatabase(userId);
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
   
   const stmt = db.prepare(`
@@ -100,15 +150,18 @@ export function saveAccountToDb(account: SaveAccountInput): number {
   return Number(result.lastInsertRowid || 0);
 }
 
-export function getAccounts(filter?: {
-  status?: string;
-  search?: string;
-  limit?: number;
-  offset?: number;
-  sortBy?: string;
-  sortOrder?: 'ASC' | 'DESC' | 'asc' | 'desc';
-}) {
-  const db = getDatabase();
+export function getAccounts(
+  filter?: {
+    status?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+    sortBy?: string;
+    sortOrder?: 'ASC' | 'DESC' | 'asc' | 'desc';
+  },
+  userId?: string
+) {
+  const db = getUserDatabase(userId);
   let query = 'SELECT * FROM accounts WHERE 1=1';
   const params: any[] = [];
 
@@ -143,7 +196,6 @@ export function getAccounts(filter?: {
   } else if (sortBy === 'max_connections' || sortBy === 'connections' || sortBy === 'max_con') {
     orderClause = `max_connections ${sortDirection}, id DESC`;
   } else if (sortBy === 'exp_date' || sortBy === 'expire') {
-    // Put empty or non-date values at the bottom when sorting
     orderClause = `CASE WHEN exp_date IS NULL OR exp_date = '' OR exp_date = '-' THEN 1 ELSE 0 END, exp_date ${sortDirection}, id DESC`;
   } else if (sortBy === 'status' || sortBy === 'is_valid') {
     orderClause = `is_valid ${sortDirection}, status ${sortDirection}, id DESC`;
@@ -176,8 +228,8 @@ export function getAccounts(filter?: {
   }));
 }
 
-export function deleteAccountById(id: number | string): boolean {
-  const db = getDatabase();
+export function deleteAccountById(id: number | string, userId?: string): boolean {
+  const db = getUserDatabase(userId);
   const numId = Number(id);
   if (isNaN(numId)) return false;
   const stmt = db.prepare('DELETE FROM accounts WHERE id = ?');
@@ -185,18 +237,18 @@ export function deleteAccountById(id: number | string): boolean {
   return Number(res.changes) > 0;
 }
 
-export function deleteAccountsBulk(ids: (number | string)[]): number {
+export function deleteAccountsBulk(ids: (number | string)[], userId?: string): number {
   const cleanIds = ids.map(Number).filter(n => !isNaN(n));
   if (!cleanIds.length) return 0;
-  const db = getDatabase();
+  const db = getUserDatabase(userId);
   const placeholders = cleanIds.map(() => '?').join(',');
   const stmt = db.prepare(`DELETE FROM accounts WHERE id IN (${placeholders})`);
   const res = stmt.run(...cleanIds);
   return Number(res.changes);
 }
 
-export function clearAllAccounts(): void {
-  const db = getDatabase();
+export function clearAllAccounts(userId?: string): void {
+  const db = getUserDatabase(userId);
   db.exec('DELETE FROM accounts;');
   try {
     db.exec('VACUUM;');
@@ -205,8 +257,9 @@ export function clearAllAccounts(): void {
   }
 }
 
-export function getDatabaseStats() {
-  const db = getDatabase();
+export function getDatabaseStats(userId?: string) {
+  const cleanId = sanitizeUserId(userId);
+  const db = getUserDatabase(cleanId);
   const total = Number((db.prepare('SELECT COUNT(*) as count FROM accounts').get() as any)?.count || 0);
   const valid = Number((db.prepare('SELECT COUNT(*) as count FROM accounts WHERE is_valid = 1').get() as any)?.count || 0);
   const expired = Number((db.prepare("SELECT COUNT(*) as count FROM accounts WHERE status = 'Expired'").get() as any)?.count || 0);
@@ -224,7 +277,9 @@ export function getDatabaseStats() {
     expired,
     invalid,
     expiringSoon,
-    totalMaxConnections
+    totalMaxConnections,
+    userId: cleanId,
+    dbFilename: getUserDatabaseFilename(cleanId)
   };
 }
 
@@ -235,3 +290,4 @@ function safeJsonParse(val: string) {
     return val;
   }
 }
+

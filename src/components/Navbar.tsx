@@ -33,9 +33,13 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* Top micro-bar for desktop & tablet */}
       <div className="px-3 sm:px-8 py-1.5 bg-[#0E0E11] border-b border-[#242428] flex flex-wrap items-center justify-between text-xs text-gray-400 gap-y-1">
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5" title={`Unique Isolated User Database: ${stats?.dbFilename || 'user_db.sqlite'}`}>
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="text-gray-300 font-mono text-[10px] sm:text-[11px] truncate max-w-[140px] sm:max-w-none">xtream_accounts.db</span>
+            <span className="text-gray-300 font-mono text-[10px] sm:text-[11px] truncate max-w-[150px] sm:max-w-none flex items-center gap-1">
+              <Database className="w-3 h-3 text-indigo-400" />
+              <span>{stats?.dbFilename || 'user_db.sqlite'}</span>
+              <span className="text-[9px] px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">Private</span>
+            </span>
           </div>
           <span className="text-[#242428] hidden sm:inline">|</span>
           <div className="hidden sm:flex items-center gap-1.5">

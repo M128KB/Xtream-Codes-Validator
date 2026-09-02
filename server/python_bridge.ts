@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
-import { getAccounts } from './db.js';
+import { getAccounts, getUserDatabasePath } from './db.js';
 
 const PYTHON_APP_DIR = path.join(process.cwd(), 'python_app');
 
@@ -15,14 +15,15 @@ export function getPythonSourceCode(filename: string): string {
 
 export function executePythonValidation(
   inputLines: string,
-  options: { threads?: number; timeout?: number; saveAll?: boolean } = {}
+  options: { threads?: number; timeout?: number; saveAll?: boolean } = {},
+  userId?: string
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   return new Promise((resolve) => {
     // Write temporary input file
-    const tempInputPath = path.join(process.cwd(), 'data', `temp_input_${Date.now()}.txt`);
+    const tempInputPath = path.join(process.cwd(), 'data', `temp_input_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.txt`);
     fs.writeFileSync(tempInputPath, inputLines, 'utf-8');
 
-    const dbPath = path.join(process.cwd(), 'data', 'xtream_accounts.db');
+    const dbPath = getUserDatabasePath(userId);
     const cliScript = path.join(PYTHON_APP_DIR, 'xtream_cli.py');
 
     const args = [
@@ -70,8 +71,12 @@ export function executePythonValidation(
   });
 }
 
-export function generateExportData(format: 'm3u' | 'csv' | 'txt' | 'json', filterStatus: string = 'Valid'): { data: string; contentType: string; filename: string } {
-  const accounts = getAccounts({ status: filterStatus });
+export function generateExportData(
+  format: 'm3u' | 'csv' | 'txt' | 'json',
+  filterStatus: string = 'Valid',
+  userId?: string
+): { data: string; contentType: string; filename: string } {
+  const accounts = getAccounts({ status: filterStatus }, userId);
 
   if (format === 'm3u') {
     let m3u = '#EXTM3U\n';
@@ -120,3 +125,4 @@ export function generateExportData(format: 'm3u' | 'csv' | 'txt' | 'json', filte
     filename: `xtream_accounts_${filterStatus.toLowerCase()}.txt`
   };
 }
+

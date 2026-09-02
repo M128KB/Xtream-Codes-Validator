@@ -1,4 +1,4 @@
-import { getDatabase } from './db.js';
+import { getSystemDatabase } from './db.js';
 import crypto from 'crypto';
 
 export interface LicenseRecord {
@@ -37,8 +37,8 @@ export interface PaymentOrderRecord {
   notes: string;
 }
 
-export function initLicenseTables() {
-  const db = getDatabase();
+export function initLicenseTables(passedDb?: any) {
+  const db = passedDb || getSystemDatabase();
   
   db.exec(`
     CREATE TABLE IF NOT EXISTS licenses (
@@ -135,7 +135,7 @@ export function verifyOrActivateLicense(params: {
   error?: string;
   license?: LicenseRecord;
 } {
-  const db = getDatabase();
+  const db = getSystemDatabase();
   const rawKey = (params.key || '').trim().toUpperCase();
   const hwid = (params.hwid || '').trim();
   const ip = (params.ip || '127.0.0.1').trim();
@@ -259,7 +259,7 @@ export function verifyOrActivateLicense(params: {
  * Disconnects / unbinds a specific device HWID so the user can register a new one
  */
 export function disconnectDevice(key: string, hwid: string): boolean {
-  const db = getDatabase();
+  const db = getSystemDatabase();
   const rawKey = (key || '').trim().toUpperCase();
   const cleanHwid = (hwid || '').trim();
 
@@ -279,7 +279,7 @@ export function createNewLicense(params: {
   maxDevices?: number;
   notes?: string;
 }): LicenseRecord {
-  const db = getDatabase();
+  const db = getSystemDatabase();
   const prefix = params.tier === 'pro_vip' ? 'XVAL-VIP' : 'XVAL-STD';
   const randomPart = crypto.randomBytes(4).toString('hex').toUpperCase();
   const yearPart = new Date().getFullYear();
@@ -415,7 +415,7 @@ export async function submitPaymentOrder(params: {
   licenseKey?: string;
   error?: string;
 }> {
-  const db = getDatabase();
+  const db = getSystemDatabase();
   const email = (params.email || '').trim();
   const txHash = (params.txHash || '').trim();
   const tier = params.tier === 'pro_vip' ? 'pro_vip' : 'standard';
@@ -505,7 +505,7 @@ export async function submitPaymentOrder(params: {
  * Retrieve all payment orders for admin review
  */
 export function getAllPaymentOrders(): PaymentOrderRecord[] {
-  const db = getDatabase();
+  const db = getSystemDatabase();
   const stmt = db.prepare('SELECT * FROM payment_orders ORDER BY id DESC LIMIT 200');
   return stmt.all() as unknown as PaymentOrderRecord[];
 }
@@ -519,7 +519,7 @@ export function adminApprovePaymentOrder(orderId: string): {
   license?: LicenseRecord;
   error?: string;
 } {
-  const db = getDatabase();
+  const db = getSystemDatabase();
   const stmt = db.prepare('SELECT * FROM payment_orders WHERE order_id = ?');
   const order = stmt.get(orderId) as unknown as PaymentOrderRecord | undefined;
 
@@ -562,7 +562,7 @@ export function adminApprovePaymentOrder(orderId: string): {
  * Admin action: Reject order
  */
 export function adminRejectPaymentOrder(orderId: string, reason?: string): { success: boolean; error?: string } {
-  const db = getDatabase();
+  const db = getSystemDatabase();
   const stmt = db.prepare(`
     UPDATE payment_orders 
     SET status = 'rejected', notes = ? 
@@ -576,7 +576,7 @@ export function adminRejectPaymentOrder(orderId: string, reason?: string): { suc
  * Retrieve all licenses for admin / owner overview
  */
 export function getAllLicenses(): Array<LicenseRecord & { devices_count: number; devices?: LicenseDeviceRecord[] }> {
-  const db = getDatabase();
+  const db = getSystemDatabase();
   const stmt = db.prepare(`
     SELECT l.*, COUNT(d.id) as devices_count
     FROM licenses l
@@ -610,7 +610,7 @@ export function getAdminSubscriptionStats(): {
   approvedOrders: number;
   rejectedOrders: number;
 } {
-  const db = getDatabase();
+  const db = getSystemDatabase();
 
   const revStmt = db.prepare("SELECT SUM(amount_usd) as total FROM payment_orders WHERE status = 'approved'");
   const revRow = revStmt.get() as any;
@@ -657,7 +657,7 @@ export function getAdminSubscriptionStats(): {
  * Admin action: Revoke/ban a license
  */
 export function adminRevokeLicense(key: string, reason?: string): { success: boolean; error?: string } {
-  const db = getDatabase();
+  const db = getSystemDatabase();
   const stmt = db.prepare("UPDATE licenses SET status = 'banned', notes = notes || ' [REVOKED: ' || ? || ']' WHERE key = ?");
   stmt.run(reason || 'Banned by admin', key);
   return { success: true };
@@ -667,7 +667,7 @@ export function adminRevokeLicense(key: string, reason?: string): { success: boo
  * Admin action: Reinstate an active license
  */
 export function adminReinstateLicense(key: string): { success: boolean; error?: string } {
-  const db = getDatabase();
+  const db = getSystemDatabase();
   const stmt = db.prepare("UPDATE licenses SET status = 'active' WHERE key = ?");
   stmt.run(key);
   return { success: true };
@@ -677,7 +677,7 @@ export function adminReinstateLicense(key: string): { success: boolean; error?: 
  * Admin action: Delete a license and its bound devices
  */
 export function adminDeleteLicense(key: string): { success: boolean; error?: string } {
-  const db = getDatabase();
+  const db = getSystemDatabase();
   db.prepare('DELETE FROM license_devices WHERE license_key = ?').run(key);
   db.prepare('DELETE FROM license_access_logs WHERE license_key = ?').run(key);
   db.prepare('DELETE FROM licenses WHERE key = ?').run(key);
@@ -688,7 +688,7 @@ export function adminDeleteLicense(key: string): { success: boolean; error?: str
  * Admin action: Delete a payment order
  */
 export function adminDeletePaymentOrder(orderId: string): { success: boolean; error?: string } {
-  const db = getDatabase();
+  const db = getSystemDatabase();
   db.prepare('DELETE FROM payment_orders WHERE order_id = ?').run(orderId);
   return { success: true };
 }
@@ -697,7 +697,7 @@ export function adminDeletePaymentOrder(orderId: string): { success: boolean; er
  * Admin action: Force disconnect a device from a license
  */
 export function adminForceDisconnectDevice(licenseKey: string, hwid: string): { success: boolean; error?: string } {
-  const db = getDatabase();
+  const db = getSystemDatabase();
   db.prepare('DELETE FROM license_devices WHERE license_key = ? AND device_hwid = ?').run(licenseKey, hwid);
   return { success: true };
 }

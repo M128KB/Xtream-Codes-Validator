@@ -53,6 +53,9 @@ export const BatchValidatorTab: React.FC<BatchValidatorTabProps> = ({
 
   // Validation State
   const [isValidating, setIsValidating] = useState<boolean>(false);
+  const [isParsingFile, setIsParsingFile] = useState<boolean>(false);
+  const [parseProgress, setParseProgress] = useState<{ processed: number; total: number; percent: number } | null>(null);
+  const [currentValidatingItem, setCurrentValidatingItem] = useState<{ domain: string; username: string; index: number } | null>(null);
   const [progress, setProgress] = useState({
     completed: 0,
     total: 0,
@@ -78,11 +81,21 @@ export const BatchValidatorTab: React.FC<BatchValidatorTabProps> = ({
   useEffect(() => {
     if (!inputText.trim()) {
       setParsedInfo(null);
+      setParseProgress(null);
       return;
     }
+    
     // Instant client-side parse
+    const lines = inputText.split('\n');
+    const totalLines = lines.length;
+    if (totalLines > 200) {
+      setIsParsingFile(true);
+      setParseProgress({ processed: totalLines, total: totalLines, percent: 100 });
+    }
+
     const instantParsed = parseXtreamTextClient(inputText);
     setParsedInfo(instantParsed);
+    setIsParsingFile(false);
 
     const timer = setTimeout(async () => {
       try {
@@ -97,6 +110,8 @@ export const BatchValidatorTab: React.FC<BatchValidatorTabProps> = ({
         }
       } catch (e) {
         console.error('Parse error', e);
+      } finally {
+        setIsParsingFile(false);
       }
     }, 250);
     return () => clearTimeout(timer);
@@ -107,10 +122,15 @@ export const BatchValidatorTab: React.FC<BatchValidatorTabProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setIsParsingFile(true);
     const reader = new FileReader();
     reader.onload = (event) => {
       const content = event.target?.result as string;
       setInputText(content);
+      setIsParsingFile(false);
+    };
+    reader.onerror = () => {
+      setIsParsingFile(false);
     };
     reader.readAsText(file);
   };
@@ -119,10 +139,15 @@ export const BatchValidatorTab: React.FC<BatchValidatorTabProps> = ({
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
     if (file) {
+      setIsParsingFile(true);
       const reader = new FileReader();
       reader.onload = (event) => {
         const content = event.target?.result as string;
         setInputText(content);
+        setIsParsingFile(false);
+      };
+      reader.onerror = () => {
+        setIsParsingFile(false);
       };
       reader.readAsText(file);
     }
@@ -190,6 +215,12 @@ http://stream.nordic-tv.com:8000|nordic_vip|nordic_pass_332`
         if (!target) continue;
 
         try {
+          setCurrentValidatingItem({
+            domain: target.domain,
+            username: target.username,
+            index: index + 1
+          });
+
           const res = await fetch('/api/validate-single', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -250,12 +281,14 @@ http://stream.nordic-tv.com:8000|nordic_vip|nordic_pass_332`
     const workerPromises = Array.from({ length: workerLimit }, () => worker());
     await Promise.all(workerPromises);
 
+    setCurrentValidatingItem(null);
     setIsValidating(false);
     onRefreshDbStats();
   };
 
   const stopValidation = () => {
     stopRequestedRef.current = true;
+    setCurrentValidatingItem(null);
     setIsValidating(false);
   };
 
@@ -378,8 +411,26 @@ domain.com:80|user|pass`}
               </div>
             </div>
 
+            {/* Parsing Progress Notification / Bar */}
+            {isParsingFile && (
+              <div className="mt-3 p-3 bg-indigo-950/40 border border-indigo-500/30 rounded-lg space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2 text-indigo-300 font-medium">
+                    <div className="w-3.5 h-3.5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                    <span>Parsing credentials & extract accounts from text...</span>
+                  </div>
+                  <span className="font-mono text-xs text-indigo-300 font-bold">
+                    {parseProgress ? `${parseProgress.processed} lines` : 'Processing...'}
+                  </span>
+                </div>
+                <div className="w-full bg-[#0A0A0C] rounded-full h-1.5 overflow-hidden border border-indigo-500/20">
+                  <div className="bg-gradient-to-r from-indigo-500 to-cyan-400 h-full w-full animate-pulse" />
+                </div>
+              </div>
+            )}
+
             {/* Parse Summary Bar */}
-            {parsedInfo && (
+            {parsedInfo && !isParsingFile && (
               <div className="mt-3 space-y-2">
                 <div className="p-2.5 bg-[#0A0A0C] rounded-lg border border-[#242428] flex items-center justify-between text-xs font-mono">
                   <div className="flex items-center gap-4">
@@ -391,7 +442,10 @@ domain.com:80|user|pass`}
                       Comment/Blank lines: {parsedInfo.totalLines - parsedInfo.validLines}
                     </span>
                   </div>
-                  <span className="text-indigo-400 text-[11px]">Ready for multi-threaded test</span>
+                  <span className="text-indigo-400 text-[11px] font-medium flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    Ready for batch test
+                  </span>
                 </div>
 
                 {!isPro && parsedInfo.validLines > freeScanLimit && (
@@ -547,20 +601,88 @@ domain.com:80|user|pass`}
             </div>
           </div>
 
-          {/* Real-time Status Card */}
-          <div className="bg-[#111114] border border-[#242428] rounded-xl p-4 shadow-sm space-y-3">
-            <div className="flex items-center justify-between text-xs text-gray-400">
-              <span className="font-medium text-gray-300">Live Batch Progress</span>
-              <span className="font-mono font-bold text-white">{progress.completed} / {progress.total} ({percentComplete}%)</span>
+          {/* Real-time Status Card with Individual Progress */}
+          <div className="bg-[#111114] border border-[#242428] rounded-xl p-4 sm:p-5 shadow-sm space-y-3.5">
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-gray-200">Validation Progress</span>
+                {isValidating && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-ping"></span>
+                    Testing Live
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-400 font-mono text-xs">
+                  {progress.completed} / {progress.total}
+                </span>
+                <span className="font-mono font-bold text-sm text-indigo-400">
+                  {percentComplete}%
+                </span>
+              </div>
             </div>
 
-            {/* Progress Bar */}
-            <div className="w-full bg-[#0A0A0C] rounded-full h-1.5 overflow-hidden border border-[#242428]">
-              <div
-                className="bg-indigo-600 h-full transition-all duration-200"
-                style={{ width: `${percentComplete}%` }}
-              />
+            {/* Segmented Multi-Color Progress Bar */}
+            <div className="space-y-1">
+              <div className="w-full bg-[#0A0A0C] rounded-full h-3 overflow-hidden border border-[#242428] p-0.5 flex">
+                {progress.total > 0 ? (
+                  <>
+                    {/* Valid Segment (Emerald) */}
+                    <div
+                      className="bg-emerald-500 h-full rounded-l-full transition-all duration-300"
+                      style={{ width: `${(progress.valid / progress.total) * 100}%` }}
+                      title={`Valid: ${progress.valid} (${Math.round((progress.valid / progress.total) * 100)}%)`}
+                    />
+                    {/* Expired Segment (Amber) */}
+                    <div
+                      className="bg-amber-500 h-full transition-all duration-300"
+                      style={{ width: `${(progress.expired / progress.total) * 100}%` }}
+                      title={`Expired: ${progress.expired} (${Math.round((progress.expired / progress.total) * 100)}%)`}
+                    />
+                    {/* Invalid / Dead Segment (Rose) */}
+                    <div
+                      className="bg-rose-500 h-full transition-all duration-300"
+                      style={{ width: `${(progress.invalid / progress.total) * 100}%` }}
+                      title={`Invalid: ${progress.invalid} (${Math.round((progress.invalid / progress.total) * 100)}%)`}
+                    />
+                  </>
+                ) : (
+                  <div className="bg-[#1C1C21] h-full w-full rounded-full" />
+                )}
+              </div>
+              <div className="flex justify-between items-center text-[10px] text-gray-500 font-mono px-0.5">
+                <span className="flex items-center gap-1 text-emerald-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>
+                  {progress.total > 0 ? Math.round((progress.valid / progress.total) * 100) : 0}% Valid
+                </span>
+                <span className="flex items-center gap-1 text-amber-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block"></span>
+                  {progress.total > 0 ? Math.round((progress.expired / progress.total) * 100) : 0}% Expired
+                </span>
+                <span className="flex items-center gap-1 text-rose-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 inline-block"></span>
+                  {progress.total > 0 ? Math.round((progress.invalid / progress.total) * 100) : 0}% Dead
+                </span>
+              </div>
             </div>
+
+            {/* Currently Validating Account Ticker */}
+            {isValidating && currentValidatingItem && (
+              <div className="p-2.5 bg-[#0A0A0C] rounded-lg border border-indigo-500/20 text-xs font-mono flex items-center justify-between gap-2 overflow-hidden animate-pulse">
+                <div className="flex items-center gap-2 truncate text-gray-300">
+                  <span className="text-[10px] px-1.5 py-0.5 bg-indigo-600/30 text-indigo-300 rounded border border-indigo-500/30 font-bold shrink-0">
+                    #{currentValidatingItem.index}
+                  </span>
+                  <span className="truncate text-gray-200 font-semibold">{currentValidatingItem.domain}</span>
+                  <span className="text-gray-500">/</span>
+                  <span className="text-indigo-400 truncate">{currentValidatingItem.username}</span>
+                </div>
+                <span className="text-[10px] text-indigo-300 bg-indigo-950/60 px-2 py-0.5 rounded shrink-0">
+                  Probing...
+                </span>
+              </div>
+            )}
 
             {/* Progress Metrics Grid */}
             <div className="grid grid-cols-4 gap-2 text-center pt-1 font-mono">
@@ -573,7 +695,7 @@ domain.com:80|user|pass`}
                 <span className="text-sm font-bold text-amber-400">{progress.expired}</span>
               </div>
               <div className="bg-[#0A0A0C] p-2 rounded-lg border border-[#242428]">
-                <span className="block text-[10px] text-gray-500 uppercase">Invalid</span>
+                <span className="block text-[10px] text-gray-500 uppercase">Dead</span>
                 <span className="text-sm font-bold text-rose-400">{progress.invalid}</span>
               </div>
               <div className="bg-[#0A0A0C] p-2 rounded-lg border border-[#242428]">

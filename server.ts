@@ -9,7 +9,10 @@ import {
   deleteAccountsBulk,
   clearAllAccounts,
   getDatabaseStats,
-  getDatabasePath
+  getUserDatabase,
+  getUserDatabasePath,
+  getUserDatabaseFilename,
+  sanitizeUserId
 } from './server/db.js';
 import {
   parseXtreamText,
@@ -42,6 +45,20 @@ import {
   adminForceDisconnectDevice
 } from './server/license.js';
 
+function extractUserId(req: express.Request): string {
+  const headerId = req.headers['x-user-id'] || req.headers['x-hwid'];
+  const queryId = req.query.userId || req.query.hwid || req.query.user_id;
+  let cookieId: string | undefined;
+  if (req.headers.cookie) {
+    const match = req.headers.cookie.match(/xval_user_id=([^;]+)/);
+    if (match) cookieId = decodeURIComponent(match[1]);
+  }
+  const licenseKey = req.headers['x-license-key'] || req.query.licenseKey;
+
+  const raw = String(headerId || queryId || cookieId || licenseKey || 'default_user').trim();
+  return sanitizeUserId(raw);
+}
+
 function checkAdminAuth(req: express.Request): boolean {
   const configuredSecret = process.env.ADMIN_SECRET_KEY || process.env.ADMIN_PIN || '90tech';
   const providedKey = 
@@ -73,6 +90,22 @@ async function startServer() {
     res.json({ status: 'ok', time: new Date().toISOString() });
   });
 
+  // User Session & DB Isolation Info
+  app.get('/api/user/session', (req, res) => {
+    try {
+      const userId = extractUserId(req);
+      const dbFilename = getUserDatabaseFilename(userId);
+      res.json({
+        userId,
+        dbFilename,
+        isIsolated: true,
+        status: 'active'
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // 1. Text Parsing
   app.post('/api/parse', (req, res) => {
     try {
@@ -90,6 +123,7 @@ async function startServer() {
   // 2. Single Account Live Validation
   app.post('/api/validate-single', async (req, res) => {
     try {
+      const userId = extractUserId(req);
       const { domain, username, password, timeout, userAgent, saveToDb } = req.body;
       if (!domain || !username || !password) {
         return res.status(400).json({ error: 'Domain, username and password are required' });
@@ -102,7 +136,7 @@ async function startServer() {
 
       let insertedId = null;
       if (saveToDb || result.is_valid) {
-        insertedId = saveAccountToDb(result);
+        insertedId = saveAccountToDb(result, userId);
       }
 
       res.json({ ...result, dbId: insertedId });
@@ -114,6 +148,7 @@ async function startServer() {
   // 3. Batch Account Validation
   app.post('/api/validate-batch', async (req, res) => {
     try {
+      const userId = extractUserId(req);
       const { accounts, concurrency = 10, timeout = 8, userAgent, autoSave = true, saveOnlyValid = false } = req.body;
       if (!Array.isArray(accounts) || accounts.length === 0) {
         return res.status(400).json({ error: 'Accounts array is required' });
@@ -141,7 +176,7 @@ async function startServer() {
 
             if (autoSave) {
               if (valResult.is_valid || !saveOnlyValid) {
-                saveAccountToDb(valResult);
+                saveAccountToDb(valResult, userId);
               }
             }
 
@@ -182,9 +217,10 @@ async function startServer() {
     }
   });
 
-  // 4. Database CRUD & Stats
+  // 4. Database CRUD & Stats (Per-User Isolated)
   app.get('/api/db/accounts', (req, res) => {
     try {
+      const userId = extractUserId(req);
       const { status, search, limit, offset, sortBy, sortOrder } = req.query;
       const accounts = getAccounts({
         status: status ? String(status) : undefined,
@@ -193,7 +229,7 @@ async function startServer() {
         offset: offset ? Number(offset) : undefined,
         sortBy: sortBy ? String(sortBy) : undefined,
         sortOrder: sortOrder ? (String(sortOrder).toUpperCase() as 'ASC' | 'DESC') : undefined
-      });
+      }, userId);
       res.json(accounts);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -202,7 +238,8 @@ async function startServer() {
 
   app.get('/api/db/stats', (req, res) => {
     try {
-      const stats = getDatabaseStats();
+      const userId = extractUserId(req);
+      const stats = getDatabaseStats(userId);
       res.json(stats);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -211,7 +248,8 @@ async function startServer() {
 
   app.post('/api/db/save', (req, res) => {
     try {
-      const id = saveAccountToDb(req.body);
+      const userId = extractUserId(req);
+      const id = saveAccountToDb(req.body, userId);
       res.json({ success: true, id });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -220,7 +258,8 @@ async function startServer() {
 
   app.delete('/api/db/account/:id', (req, res) => {
     try {
-      const deleted = deleteAccountById(Number(req.params.id));
+      const userId = extractUserId(req);
+      const deleted = deleteAccountById(Number(req.params.id), userId);
       res.json({ success: deleted });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -229,6 +268,7 @@ async function startServer() {
 
   app.all(['/api/db/delete-bulk', '/api/db/delete-selected'], (req, res) => {
     try {
+      const userId = extractUserId(req);
       const ids = req.body?.ids || req.query?.ids;
       const parsedIds = Array.isArray(ids)
         ? ids.map(Number).filter((n: number) => !isNaN(n))
@@ -239,7 +279,7 @@ async function startServer() {
       if (!parsedIds.length) {
         return res.status(400).json({ error: 'ids array required' });
       }
-      const count = deleteAccountsBulk(parsedIds);
+      const count = deleteAccountsBulk(parsedIds, userId);
       res.json({ success: true, count });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -248,19 +288,21 @@ async function startServer() {
 
   app.all(['/api/db/clear', '/api/db/wipe'], (req, res) => {
     try {
-      clearAllAccounts();
-      res.json({ success: true, message: 'All accounts wiped' });
+      const userId = extractUserId(req);
+      clearAllAccounts(userId);
+      res.json({ success: true, message: 'All accounts wiped for your database' });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
   });
 
-  // 5. Exports & Downloads
+  // 5. Exports & Downloads (Per-User Isolated)
   app.get('/api/export', (req, res) => {
     try {
+      const userId = extractUserId(req);
       const format = (req.query.format as 'm3u' | 'csv' | 'txt' | 'json') || 'txt';
       const status = String(req.query.status || 'Valid');
-      const exportFile = generateExportData(format, status);
+      const exportFile = generateExportData(format, status, userId);
 
       res.setHeader('Content-Type', exportFile.contentType);
       res.setHeader('Content-Disposition', `attachment; filename="${exportFile.filename}"`);
@@ -272,11 +314,12 @@ async function startServer() {
 
   app.get('/api/db/download-sqlite', (req, res) => {
     try {
-      const dbPath = getDatabasePath();
+      const userId = extractUserId(req);
+      const dbPath = getUserDatabasePath(userId);
       if (!fs.existsSync(dbPath)) {
-        return res.status(404).json({ error: 'Database file not found' });
+        getUserDatabase(userId);
       }
-      res.download(dbPath, 'xtream_accounts.db');
+      res.download(dbPath, getUserDatabaseFilename(userId));
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -538,6 +581,7 @@ async function startServer() {
   // 7. Python Bridge & Source Downloads
   app.post('/api/python/run', async (req, res) => {
     try {
+      const userId = extractUserId(req);
       const { inputLines, threads, timeout, saveAll } = req.body;
       if (!inputLines || typeof inputLines !== 'string') {
         return res.status(400).json({ error: 'inputLines string is required' });
@@ -547,7 +591,7 @@ async function startServer() {
         threads: threads ? Number(threads) : 10,
         timeout: timeout ? Number(timeout) : 8,
         saveAll: Boolean(saveAll)
-      });
+      }, userId);
 
       res.json(result);
     } catch (e: any) {

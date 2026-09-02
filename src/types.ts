@@ -43,6 +43,8 @@ export interface DatabaseStats {
   invalid: number;
   expiringSoon: number; // in next 7 days
   totalMaxConnections: number;
+  userId?: string;
+  dbFilename?: string;
 }
 
 export type LicenseTier = 'free' | 'standard' | 'pro_vip';

@@ -12,6 +12,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { useLicense } from '../context/LicenseContext';
+import { getOrCreateUserDatabaseId } from '../utils/fingerprint';
 
 interface ExportModalProps {
   isOpen: boolean;
@@ -32,10 +33,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose }) => 
       return;
     }
 
+    const userId = getOrCreateUserDatabaseId();
     if (format === 'sqlite') {
-      window.location.href = '/api/db/download-sqlite';
+      window.location.href = `/api/db/download-sqlite?userId=${encodeURIComponent(userId)}`;
     } else {
-      window.location.href = `/api/export?format=${format}&status=${statusFilter}`;
+      window.location.href = `/api/export?format=${format}&status=${statusFilter}&userId=${encodeURIComponent(userId)}`;
     }
     onClose();
   };

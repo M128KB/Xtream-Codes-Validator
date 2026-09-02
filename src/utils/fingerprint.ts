@@ -103,3 +103,102 @@ export function getFriendlyDeviceName(): string {
 
   return `${os} ${browser}`;
 }
+
+export function getOrCreateUserDatabaseId(): string {
+  if (typeof window === 'undefined') return 'default_user';
+
+  let userId = localStorage.getItem('xval_user_db_id');
+  if (!userId || !userId.startsWith('USR-')) {
+    const hwid = getOrCreateDeviceFingerprint();
+    const randPart = Math.random().toString(36).substring(2, 8).toUpperCase();
+    userId = `${hwid.replace(/^HWID-/, 'USR-')}-${randPart}`;
+    try {
+      localStorage.setItem('xval_user_db_id', userId);
+    } catch (_) {}
+  }
+
+  // Set cookie for direct API requests, downloads, and media streaming requests
+  try {
+    document.cookie = `xval_user_id=${encodeURIComponent(userId)}; path=/; max-age=31536000; SameSite=Lax`;
+    const hwid = getOrCreateDeviceFingerprint();
+    document.cookie = `xval_hwid=${encodeURIComponent(hwid)}; path=/; max-age=31536000; SameSite=Lax`;
+  } catch (_) {}
+
+  return userId;
+}
+
+let isInterceptorInitialized = false;
+
+export function setupGlobalFetchInterceptor(): void {
+  if (isInterceptorInitialized || typeof window === 'undefined') return;
+  isInterceptorInitialized = true;
+
+  // Initialize cookies immediately so standard requests send identity headers automatically
+  try {
+    getOrCreateUserDatabaseId();
+  } catch (_) {}
+
+  try {
+    const originalFetch = window.fetch;
+    if (typeof originalFetch !== 'function') return;
+
+    const wrappedFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      try {
+        const userId = getOrCreateUserDatabaseId();
+        const hwid = getOrCreateDeviceFingerprint();
+        const licenseKey = typeof localStorage !== 'undefined' ? localStorage.getItem('xval_license_key') : null;
+
+        let headers: Headers;
+        if (init?.headers instanceof Headers) {
+          headers = init.headers;
+        } else if (Array.isArray(init?.headers)) {
+          headers = new Headers(init.headers);
+        } else if (init?.headers && typeof init.headers === 'object') {
+          headers = new Headers(init.headers as Record<string, string>);
+        } else if (input instanceof Request) {
+          headers = new Headers(input.headers);
+        } else {
+          headers = new Headers();
+        }
+
+        if (!headers.has('x-user-id')) {
+          headers.set('x-user-id', userId);
+        }
+        if (!headers.has('x-hwid')) {
+          headers.set('x-hwid', hwid);
+        }
+        if (licenseKey && !headers.has('x-license-key')) {
+          headers.set('x-license-key', licenseKey);
+        }
+
+        const modifiedInit: RequestInit = {
+          ...init,
+          headers,
+        };
+
+        return originalFetch.call(window, input, modifiedInit);
+      } catch (err) {
+        return originalFetch.call(window, input, init);
+      }
+    };
+
+    // Safely attempt assignment or defineProperty without throwing if read-only
+    try {
+      window.fetch = wrappedFetch;
+    } catch (_) {
+      try {
+        Object.defineProperty(window, 'fetch', {
+          value: wrappedFetch,
+          writable: true,
+          configurable: true,
+          enumerable: true,
+        });
+      } catch (_) {
+        // If window.fetch is completely locked by the container/browser, cookies handle identity seamlessly
+      }
+    }
+  } catch (_) {
+    // Graceful fallback
+  }
+}
+

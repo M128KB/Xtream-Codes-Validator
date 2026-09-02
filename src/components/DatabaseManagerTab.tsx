@@ -328,6 +328,49 @@ export const DatabaseManagerTab: React.FC<DatabaseManagerTabProps> = ({
         </div>
       )}
 
+      {/* User Isolated Database Status Bar */}
+      <div className="bg-[#111114] border border-[#242428] rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm bg-gradient-to-r from-indigo-950/20 via-transparent to-transparent">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center shrink-0">
+            <Database className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-gray-200">Isolated User Database:</span>
+              <span className="font-mono text-xs text-indigo-300 font-bold bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
+                {stats?.dbFilename || 'user_db.sqlite'}
+              </span>
+              <span className="text-[10px] bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                Active Partition
+              </span>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-0.5">
+              Your accounts, validation metrics, and playlist exports are isolated in your own dedicated SQLite database file.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+          <button
+            onClick={onOpenExportModal}
+            className="px-3 py-1.5 bg-[#1A1A22] hover:bg-[#252530] text-gray-300 hover:text-white rounded-lg text-xs font-medium border border-[#34343A] transition-colors flex items-center gap-1.5 cursor-pointer"
+            title="Download SQLite Database File"
+          >
+            <FileDown className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Export DB</span>
+          </button>
+          <button
+            onClick={triggerClearAll}
+            className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/20 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
+            title="Wipe this user's accounts"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+            <span>Wipe DB</span>
+          </button>
+        </div>
+      </div>
+
       {/* Top Controls & Analytics Bar */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6">
         <div className="bg-[#111114] border border-[#242428] rounded-xl p-4 sm:p-5 flex items-center justify-between shadow-sm">
