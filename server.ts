@@ -27,7 +27,8 @@ import {
 import {
   fetchXtreamJson,
   pipeStream,
-  pipeLiveXtreamStream
+  pipeLiveXtreamStream,
+  diagnoseLiveStream
 } from './server/stream_proxy.js';
 import {
   verifyOrActivateLicense,
@@ -768,6 +769,26 @@ async function startServer() {
       res,
       explicitExt
     );
+  });
+
+  // Diagnostic Live Stream Probe Helper: /api/stream/diagnose?host=...&user=...&pass=...&streamId=...
+  app.get('/api/stream/diagnose', async (req, res) => {
+    const { host, user, pass, streamId } = req.query;
+    if (!host || !user || !pass || !streamId) {
+      return res.status(400).json({ error: 'Missing host, user, pass or streamId parameter' });
+    }
+
+    try {
+      const diagnosis = await diagnoseLiveStream(
+        String(host),
+        String(user),
+        String(pass),
+        String(streamId)
+      );
+      res.json(diagnosis);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // Direct VOD Movie URL Helper: /api/stream/movie/:streamId?host=...&user=...&pass=...&container=mp4

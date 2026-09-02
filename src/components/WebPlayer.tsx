@@ -27,9 +27,27 @@ import {
   FolderOpen,
   Copy,
   Check,
-  Zap
+  Zap,
+  Terminal,
+  Activity,
+  Trash2,
+  Bug,
+  CheckCircle2,
+  XCircle,
+  ChevronDown,
+  ChevronUp,
+  X
 } from 'lucide-react';
 import { StreamCategory, LiveStreamItem, VodStreamItem, EpgProgram, XtreamAccount } from '../types';
+
+export interface StreamLogEntry {
+  id: string;
+  timestamp: string;
+  level: 'info' | 'warn' | 'error' | 'success';
+  category: 'NETWORK' | 'PLAYER' | 'HEADER' | 'SYSTEM';
+  message: string;
+  details?: any;
+}
 
 interface WebPlayerProps {
   initialAccount?: XtreamAccount | null;
@@ -70,6 +88,24 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
   const [streamError, setStreamError] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
 
+  // Diagnostic Logs state
+  const [showLogs, setShowLogs] = useState(false);
+  const [logs, setLogs] = useState<StreamLogEntry[]>([]);
+  const [logFilter, setLogFilter] = useState<'ALL' | 'NETWORK' | 'PLAYER' | 'HEADER' | 'ERROR'>('ALL');
+  const [isProbing, setIsProbing] = useState(false);
+  const [probeDiagnosis, setProbeDiagnosis] = useState<{
+    success: boolean;
+    activeUrl?: string;
+    statusCode?: number;
+    contentType?: string;
+    server?: string;
+    latencyMs: number;
+    candidatesTested: { url: string; status: number; contentType?: string; error?: string }[];
+    recommendation: string;
+  } | null>(null);
+  const [copiedLogs, setCopiedLogs] = useState(false);
+  const logsEndRef = useRef<HTMLDivElement | null>(null);
+
   // Player controls state & engines
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -95,6 +131,98 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
   const hostInputId = useId();
   const userInputId = useId();
   const passInputId = useId();
+
+  // Logging helpers
+  const addLog = (
+    level: 'info' | 'warn' | 'error' | 'success',
+    category: 'NETWORK' | 'PLAYER' | 'HEADER' | 'SYSTEM',
+    message: string,
+    details?: any
+  ) => {
+    const d = new Date();
+    const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}.${String(d.getMilliseconds()).padStart(3, '0')}`;
+    const newEntry: StreamLogEntry = {
+      id: `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      timestamp: timeStr,
+      level,
+      category,
+      message,
+      details
+    };
+    setLogs(prev => [...prev.slice(-180), newEntry]);
+  };
+
+  const clearLogs = () => {
+    setLogs([]);
+    setProbeDiagnosis(null);
+  };
+
+  const copyLogs = () => {
+    const text = logs
+      .map(
+        l =>
+          `[${l.timestamp}] [${l.category}] [${l.level.toUpperCase()}] ${l.message}${
+            l.details
+              ? `\nDetails: ${typeof l.details === 'string' ? l.details : JSON.stringify(l.details, null, 2)}`
+              : ''
+          }`
+      )
+      .join('\n');
+    navigator.clipboard.writeText(text);
+    setCopiedLogs(true);
+    setTimeout(() => setCopiedLogs(false), 2000);
+  };
+
+  const runStreamProbe = async (streamId?: string | number) => {
+    if (!activeAccount) return;
+    const targetId = streamId ?? activeLiveStream?.stream_id;
+    if (!targetId) return;
+
+    setIsProbing(true);
+    addLog('info', 'NETWORK', `Probing upstream endpoints for channel ID: ${targetId} on host: ${activeAccount.domain}...`);
+
+    try {
+      const res = await fetch(
+        `/api/stream/diagnose?host=${encodeURIComponent(activeAccount.domain)}&user=${encodeURIComponent(
+          activeAccount.username
+        )}&pass=${encodeURIComponent(activeAccount.password)}&streamId=${encodeURIComponent(targetId)}`
+      );
+      const data = await res.json();
+      setProbeDiagnosis(data);
+
+      if (data.success) {
+        addLog(
+          'success',
+          'HEADER',
+          `Stream probe SUCCESS (HTTP ${data.statusCode}) - Latency: ${data.latencyMs}ms | Content-Type: ${data.contentType || 'N/A'}`,
+          {
+            activeUrl: data.activeUrl,
+            contentType: data.contentType,
+            server: data.server,
+            recommendation: data.recommendation,
+            candidatesTested: data.candidatesTested
+          }
+        );
+        addLog('info', 'SYSTEM', `Diagnosis: ${data.recommendation}`);
+      } else {
+        addLog('error', 'NETWORK', `Stream probe FAILED: ${data.recommendation}`, {
+          candidatesTested: data.candidatesTested,
+          latencyMs: data.latencyMs
+        });
+      }
+    } catch (err: any) {
+      addLog('error', 'NETWORK', `Stream probe request failed: ${err.message}`);
+    } finally {
+      setIsProbing(false);
+    }
+  };
+
+  // Auto-scroll logs to bottom if open
+  useEffect(() => {
+    if (showLogs && logsEndRef.current) {
+      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs, showLogs]);
 
   // Teardown any active players
   const cleanupPlayers = () => {
@@ -293,6 +421,15 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
     }
   };
 
+  // Helper to get fully qualified absolute URL for Web Workers
+  const toAbsoluteUrl = (pathOrUrl: string): string => {
+    try {
+      return new URL(pathOrUrl, window.location.origin).href;
+    } catch (_) {
+      return pathOrUrl;
+    }
+  };
+
   // Play a Live Channel (Standard Xtream Codes: domain/username/password/channelId)
   const playLiveStream = (stream: LiveStreamItem, forceEngine?: 'mpegts' | 'hls') => {
     if (!activeAccount) return;
@@ -302,14 +439,30 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
     setEpgListings([]);
     setMobileTab('player');
 
-    // Fetch EPG listings
-    loadEpg(stream.stream_id);
-
     const engineToUse = forceEngine || 'mpegts';
     const ext = engineToUse === 'hls' ? '.m3u8' : '.ts';
-    const streamUrl = `/api/stream/live/${stream.stream_id}${ext}?host=${encodeURIComponent(activeAccount.domain)}&user=${encodeURIComponent(activeAccount.username)}&pass=${encodeURIComponent(activeAccount.password)}&format=${engineToUse}`;
+    const rawStreamPath = `/api/stream/live/${stream.stream_id}${ext}?host=${encodeURIComponent(activeAccount.domain)}&user=${encodeURIComponent(activeAccount.username)}&pass=${encodeURIComponent(activeAccount.password)}&format=${engineToUse}`;
+    const streamUrl = toAbsoluteUrl(rawStreamPath);
+    
+    addLog(
+      'info',
+      'NETWORK',
+      `Channel selected: "${stream.name}" (ID: ${stream.stream_id}). Initializing engine: ${engineToUse.toUpperCase()}...`,
+      {
+        streamId: stream.stream_id,
+        channelName: stream.name,
+        targetEngine: engineToUse,
+        streamUrl
+      }
+    );
+
+    // Fetch EPG listings
+    loadEpg(stream.stream_id);
     
     setupLivePlayer(streamUrl, engineToUse);
+
+    // Run background probe to diagnostic headers and latency
+    runStreamProbe(stream.stream_id);
   };
 
   // Setup Live Stream Player with MPEG-TS / HLS Engine
@@ -319,30 +472,35 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
     cleanupPlayers();
     setPlayerEngine(targetEngine);
 
+    const absoluteUrl = toAbsoluteUrl(srcUrl);
+
     // If HLS engine is requested or if mpegts isn't supported in browser
     if (targetEngine === 'hls' || !mpegts.isSupported()) {
-      setupHlsPlayer(srcUrl, true);
+      addLog('info', 'PLAYER', `MPEG-TS unsupported or HLS forced. Routing stream to HLS.js engine.`);
+      setupHlsPlayer(absoluteUrl, true);
       return;
     }
 
     try {
-      // MPEG-TS Engine: Explicit 'mpegts' type for TS demuxer
+      addLog('info', 'PLAYER', `Initializing mpegts.js demuxer (Type: mpegts, Live: true) with URL: ${absoluteUrl}`);
+
+      // MPEG-TS Engine: Explicit 'mpegts' type with absolute URL
       const player = mpegts.createPlayer(
         {
           type: 'mpegts',
           isLive: true,
-          url: srcUrl,
+          url: absoluteUrl,
           hasAudio: true,
           hasVideo: true,
           cors: true,
         },
         {
-          enableWorker: true,
+          enableWorker: false, // Disabled worker to prevent WorkerGlobalScope relative URL & sandbox blob issues
           lazyLoad: false,
-          stashInitialSize: 256 * 1024,
+          stashInitialSize: 384 * 1024,
           enableStashBuffer: false,
           liveBufferLatencyChasing: true,
-          liveBufferLatencyMaxLatency: 3.5,
+          liveBufferLatencyMaxLatency: 4.0,
           liveBufferLatencyMinRemain: 0.5,
           autoCleanupSourceBuffer: true,
           autoCleanupMaxBackwardDuration: 30,
@@ -353,8 +511,10 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
       mpegtsRef.current = player;
       player.attachMediaElement(video);
       player.load();
+      addLog('info', 'PLAYER', `MPEG-TS player attached to video element. Stream buffer loading.`);
 
       player.on(mpegts.Events.MEDIA_INFO, (info: any) => {
+        addLog('success', 'HEADER', `Media Info received: Video ${info.width || '?'}x${info.height || '?'}, Codec: ${info.videoCodec || 'N/A'}, Audio: ${info.audioCodec || 'N/A'}, FPS: ${info.fps || 'N/A'}`);
         if (info.width && info.height) {
           setHlsStats({
             resolution: `${info.width}x${info.height}`,
@@ -372,20 +532,24 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
         }
       });
 
-      player.on(mpegts.Events.ERROR, (errorType: any, errorDetail: any) => {
+      player.on(mpegts.Events.ERROR, (errorType: any, errorDetail: any, errorInfo: any) => {
         console.warn('mpegts error:', errorType, errorDetail);
+        addLog('error', 'PLAYER', `MPEG-TS Engine Error [Type: ${errorType}] [Detail: ${errorDetail}]`, errorInfo || { errorType, errorDetail });
+
         // If mpegts encounters an error or if stream is HLS M3U8, auto-switch to HLS engine
         if (
           errorType === mpegts.ErrorTypes.MEDIA_ERROR ||
-          errorDetail === mpegts.ErrorDetails.FORMAT_UNSUPPORTED ||
+          errorType === mpegts.ErrorTypes.NETWORK_ERROR ||
+          errorDetail === (mpegts.ErrorDetails as any).MEDIA_FORMAT_UNSUPPORTED ||
+          errorDetail === (mpegts.ErrorDetails as any).FORMAT_UNSUPPORTED ||
           errorDetail === 'demuxError'
         ) {
-          console.log('Switching to HLS fallback player engine...');
+          addLog('warn', 'PLAYER', 'MPEG-TS encountered error or format mismatch. Switching to fallback HLS.js engine...');
           if (activeAccount && activeLiveStream) {
-            const hlsUrl = `/api/stream/live/${activeLiveStream.stream_id}.m3u8?host=${encodeURIComponent(activeAccount.domain)}&user=${encodeURIComponent(activeAccount.username)}&pass=${encodeURIComponent(activeAccount.password)}&format=m3u8`;
+            const hlsUrl = toAbsoluteUrl(`/api/stream/live/${activeLiveStream.stream_id}.m3u8?host=${encodeURIComponent(activeAccount.domain)}&user=${encodeURIComponent(activeAccount.username)}&pass=${encodeURIComponent(activeAccount.password)}&format=m3u8`);
             setupHlsPlayer(hlsUrl, true);
           } else {
-            setupHlsPlayer(srcUrl, true);
+            setupHlsPlayer(absoluteUrl, true);
           }
         } else {
           setStreamError(`Stream connecting... (Attempting auto-recovery)`);
@@ -395,11 +559,12 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
       safePlay(video);
     } catch (e: any) {
       console.warn('MPEG-TS init failed, falling back to HLS:', e);
+      addLog('error', 'PLAYER', `MPEG-TS initialization exception: ${e.message}. Falling back to HLS...`);
       if (activeAccount && activeLiveStream) {
-        const hlsUrl = `/api/stream/live/${activeLiveStream.stream_id}.m3u8?host=${encodeURIComponent(activeAccount.domain)}&user=${encodeURIComponent(activeAccount.username)}&pass=${encodeURIComponent(activeAccount.password)}&format=m3u8`;
+        const hlsUrl = toAbsoluteUrl(`/api/stream/live/${activeLiveStream.stream_id}.m3u8?host=${encodeURIComponent(activeAccount.domain)}&user=${encodeURIComponent(activeAccount.username)}&pass=${encodeURIComponent(activeAccount.password)}&format=m3u8`);
         setupHlsPlayer(hlsUrl, true);
       } else {
-        setupHlsPlayer(srcUrl, true);
+        setupHlsPlayer(absoluteUrl, true);
       }
     }
   };
@@ -416,6 +581,8 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
     const ext = stream.container_extension || 'mp4';
     const streamUrl = `/api/stream/vod/${stream.stream_id}?host=${encodeURIComponent(activeAccount.domain)}&user=${encodeURIComponent(activeAccount.username)}&pass=${encodeURIComponent(activeAccount.password)}&container=${ext}`;
     
+    addLog('info', 'NETWORK', `VOD Selected: "${stream.name}" (Format: ${ext}). Source: ${streamUrl}`);
+
     // For VOD mp4, direct HTML5 video or HLS if m3u8
     if (ext === 'm3u8') {
       setupHlsPlayer(streamUrl, false);
@@ -431,6 +598,8 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
     cleanupPlayers();
     setPlayerEngine('hls');
 
+    addLog('info', 'PLAYER', `Setting up HLS.js instance (isLive: ${isLive}) for URL: ${srcUrl}`);
+
     if (Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
@@ -443,7 +612,14 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
       hls.loadSource(srcUrl);
       hls.attachMedia(video);
 
+      hls.on(Hls.Events.MANIFEST_LOADING, () => {
+        addLog('info', 'NETWORK', `HLS Manifest loading: ${srcUrl}`);
+      });
+
       hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
+        addLog('success', 'HEADER', `HLS Manifest parsed successfully: ${data.levels.length} quality level(s) found`, {
+          levels: data.levels.map(l => `${l.width || '?'}x${l.height || '?'} @ ${Math.round(l.bitrate / 1000)}kbps`)
+        });
         safePlay(video);
         if (data.levels && data.levels.length > 0) {
           const lvl = data.levels[0];
@@ -457,6 +633,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
       hls.on(Hls.Events.LEVEL_SWITCHED, (_, data) => {
         const lvl = hls.levels[data.level];
         if (lvl) {
+          addLog('info', 'PLAYER', `HLS Adaptive Level switched to ${lvl.width || '?'}x${lvl.height || '?'} (${Math.round(lvl.bitrate / 1000)} kbps)`);
           setHlsStats(prev => ({
             ...prev,
             bitrate: lvl.bitrate,
@@ -465,15 +642,42 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
         }
       });
 
+      hls.on(Hls.Events.FRAG_LOADED, (_, data) => {
+        if (typeof data.frag.sn === 'number' && data.frag.sn % 5 === 0) {
+          addLog(
+            'info',
+            'NETWORK',
+            `HLS Fragment chunk #${data.frag.sn} loaded (${(data.frag.stats.total / 1024).toFixed(1)} KB in ${(data.frag.stats.loading.end - data.frag.stats.loading.start).toFixed(0)}ms)`
+          );
+        }
+      });
+
       hls.on(Hls.Events.ERROR, (_, data) => {
+        const httpCode = data.response?.code ? ` [HTTP ${data.response.code}]` : '';
+        const urlReq = data.context?.url ? ` [URL: ${data.context.url}]` : '';
+        addLog(
+          data.fatal ? 'error' : 'warn',
+          'PLAYER',
+          `HLS ${data.fatal ? 'FATAL ' : ''}Error [Type: ${data.type}] [Detail: ${data.details}]${httpCode}${urlReq}`,
+          {
+            type: data.type,
+            details: data.details,
+            fatal: data.fatal,
+            responseCode: data.response?.code,
+            responseText: data.response?.text?.slice(0, 300)
+          }
+        );
+
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
               setStreamError('Network error. Reconnecting stream...');
+              addLog('warn', 'PLAYER', 'Fatal Network Error: Attempting hls.startLoad() recovery...');
               hls.startLoad();
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
               setStreamError('Media decoding error. Recovering buffer...');
+              addLog('warn', 'PLAYER', 'Fatal Media Error: Attempting hls.recoverMediaError()...');
               hls.recoverMediaError();
               break;
             default:
@@ -486,9 +690,11 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
       hlsRef.current = hls;
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
       // Native Apple Safari HLS
+      addLog('info', 'PLAYER', `Native Apple Safari HLS mode supported. Setting video.src = ${srcUrl}`);
       video.src = srcUrl;
       safePlay(video);
     } else {
+      addLog('error', 'PLAYER', `HLS is not supported in this browser.`);
       setStreamError('Your browser does not support HLS playback.');
     }
   };
@@ -499,6 +705,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
     const video = videoRef.current;
     cleanupPlayers();
     setPlayerEngine('direct');
+    addLog('info', 'PLAYER', `Direct MP4 Player set: ${srcUrl}`);
 
     video.src = srcUrl;
     safePlay(video);
@@ -1024,6 +1231,25 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
                 </div>
               )}
 
+              {/* Stream Logs Toggle Button */}
+              <button
+                onClick={() => setShowLogs(prev => !prev)}
+                className={`px-2.5 py-1 rounded text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer border ${
+                  showLogs
+                    ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-500/20'
+                    : 'bg-[#181820] hover:bg-[#22222E] text-gray-300 border-[#282834]'
+                }`}
+                title="Toggle Stream Network & Player Diagnostic Logs"
+              >
+                <Terminal className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="hidden sm:inline">Stream Logs</span>
+                {logs.length > 0 && (
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${showLogs ? 'bg-indigo-700 text-white' : 'bg-[#22222E] text-gray-400'}`}>
+                    {logs.length}
+                  </span>
+                )}
+              </button>
+
               <button
                 onClick={() => {
                   setAspectRatio(prev => prev === '16:9' ? '4:3' : prev === '4:3' ? 'cover' : '16:9');
@@ -1065,9 +1291,36 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
                   ? 'aspect-[4/3] object-contain'
                   : 'object-cover'
               }`}
-              onPlay={() => setIsPlaying(true)}
+              onLoadStart={() => addLog('info', 'PLAYER', 'HTMLVideoElement: Load started')}
+              onLoadedMetadata={() => {
+                if (videoRef.current) {
+                  addLog('info', 'PLAYER', `HTMLVideoElement: Metadata loaded (${videoRef.current.videoWidth}x${videoRef.current.videoHeight})`);
+                }
+              }}
+              onCanPlay={() => addLog('success', 'PLAYER', 'HTMLVideoElement: Can play event fired')}
+              onPlaying={() => {
+                setIsPlaying(true);
+                addLog('success', 'PLAYER', 'HTMLVideoElement: Stream playback started smoothly');
+              }}
+              onWaiting={() => addLog('warn', 'PLAYER', 'HTMLVideoElement: Buffering / waiting for stream packets...')}
               onPause={() => setIsPlaying(false)}
-              onError={() => setIsPlaying(false)}
+              onError={(e) => {
+                setIsPlaying(false);
+                const mediaErr = videoRef.current?.error;
+                let errMsg = 'Unknown video playback error';
+                if (mediaErr) {
+                  switch (mediaErr.code) {
+                    case 1: errMsg = 'MEDIA_ERR_ABORTED (Fetch aborted)'; break;
+                    case 2: errMsg = 'MEDIA_ERR_NETWORK (Network error occurred)'; break;
+                    case 3: errMsg = 'MEDIA_ERR_DECODE (Decoding error)'; break;
+                    case 4: errMsg = 'MEDIA_ERR_SRC_NOT_SUPPORTED (Source not supported)'; break;
+                  }
+                }
+                addLog('error', 'PLAYER', `HTMLVideoElement Error [Code ${mediaErr?.code || 0}]: ${errMsg}`, {
+                  message: mediaErr?.message,
+                  code: mediaErr?.code
+                });
+              }}
               onTimeUpdate={() => {
                 if (videoRef.current) {
                   setCurrentTime(videoRef.current.currentTime);
@@ -1080,13 +1333,13 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
 
             {/* Error Message Overlay */}
             {streamError && (
-              <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center p-6 text-center z-20">
+              <div className="absolute inset-0 bg-black/85 backdrop-blur-xs flex flex-col items-center justify-center p-6 text-center z-20">
                 <AlertTriangle className="w-10 h-10 text-rose-500 mb-2 animate-bounce" />
                 <p className="text-sm font-semibold text-white max-w-md">{streamError}</p>
                 <p className="text-xs text-gray-400 mt-1 max-w-sm">
-                  Connecting to live stream or trying alternate engine...
+                  The upstream server might require an alternative streaming endpoint or container format.
                 </p>
-                <div className="flex items-center gap-2 mt-4">
+                <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
                   <button
                     onClick={() => {
                       if (activeLiveStream) playLiveStream(activeLiveStream, 'mpegts');
@@ -1106,6 +1359,16 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
                       <span>Try HLS Engine</span>
                     </button>
                   )}
+                  <button
+                    onClick={() => {
+                      setShowLogs(true);
+                      runStreamProbe();
+                    }}
+                    className="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 rounded text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Activity className="w-3.5 h-3.5" />
+                    <span>Diagnose Stream</span>
+                  </button>
                 </div>
               </div>
             )}
@@ -1180,6 +1443,15 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
                   {/* Right Controls (Aspect ratio, Fullscreen) */}
                   <div className="flex items-center gap-2 text-xs">
                     <button
+                      onClick={() => setShowLogs(prev => !prev)}
+                      className={`p-1.5 rounded transition-colors cursor-pointer ${
+                        showLogs ? 'bg-indigo-600 text-white' : 'bg-white/10 hover:bg-white/20 text-white'
+                      }`}
+                      title="Toggle Stream Logs"
+                    >
+                      <Terminal className="w-4 h-4" />
+                    </button>
+                    <button
                       onClick={toggleFullscreen}
                       className="p-1.5 rounded bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
                       title="Toggle Fullscreen"
@@ -1210,6 +1482,161 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
                   {copiedLink ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                   <span>{copiedLink ? 'Copied' : 'Copy Xtream Link'}</span>
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* Diagnostic Stream Logs Panel (Collapsible) */}
+          {showLogs && (
+            <div className="bg-[#0B0B0F] border-b border-[#1E1E28] p-3 text-xs">
+              {/* Header bar */}
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1A1A24] pb-2 mb-2.5">
+                <div className="flex items-center gap-2">
+                  <Terminal className="w-4 h-4 text-emerald-400" />
+                  <span className="font-bold text-white uppercase tracking-wider text-[11px]">
+                    Stream Network & Engine Logs
+                  </span>
+                  <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full font-mono text-[10px]">
+                    Live Diagnostics
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {/* Category filters */}
+                  {(['ALL', 'NETWORK', 'PLAYER', 'HEADER', 'ERROR'] as const).map(f => (
+                    <button
+                      key={f}
+                      onClick={() => setLogFilter(f)}
+                      className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold transition-colors cursor-pointer ${
+                        logFilter === f
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-[#161620] hover:bg-[#1E1E2C] text-gray-400'
+                      }`}
+                    >
+                      {f}
+                    </button>
+                  ))}
+
+                  <div className="h-3 w-px bg-gray-700 mx-1" />
+
+                  {/* Probe Stream Button */}
+                  <button
+                    onClick={() => runStreamProbe()}
+                    disabled={isProbing || !activeAccount || !activeLiveStream}
+                    className="px-2.5 py-1 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
+                    title="Probe all Xtream URL formats and analyze Content-Type headers"
+                  >
+                    <Activity className={`w-3 h-3 ${isProbing ? 'animate-spin' : ''}`} />
+                    <span>{isProbing ? 'Probing...' : 'Run Probe'}</span>
+                  </button>
+
+                  {/* Copy Logs */}
+                  <button
+                    onClick={copyLogs}
+                    className="px-2 py-1 bg-[#161620] hover:bg-[#1E1E2C] text-gray-300 rounded text-[11px] flex items-center gap-1 cursor-pointer"
+                    title="Copy full diagnostic logs to clipboard"
+                  >
+                    {copiedLogs ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedLogs ? 'Copied' : 'Copy'}</span>
+                  </button>
+
+                  {/* Clear Logs */}
+                  <button
+                    onClick={clearLogs}
+                    className="px-2 py-1 bg-[#161620] hover:bg-rose-900/30 text-gray-400 hover:text-rose-300 rounded text-[11px] flex items-center gap-1 cursor-pointer"
+                    title="Clear current log entries"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    <span>Clear</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Probe Result Banner (if available) */}
+              {probeDiagnosis && (
+                <div className={`p-2.5 mb-2.5 rounded border text-[11px] leading-relaxed ${
+                  probeDiagnosis.success
+                    ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-200'
+                    : 'bg-rose-950/20 border-rose-500/30 text-rose-200'
+                }`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-bold flex items-center gap-1.5">
+                      {probeDiagnosis.success ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />}
+                      {probeDiagnosis.success ? 'Upstream Stream Probe: Operational' : 'Upstream Stream Probe: Failed'}
+                    </span>
+                    <span className="font-mono text-[10px] text-gray-400">
+                      Response: {probeDiagnosis.latencyMs}ms | Status: {probeDiagnosis.statusCode || 'N/A'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-[10px] text-gray-300 mt-1 font-mono">
+                    {probeDiagnosis.contentType && (
+                      <div><span className="text-gray-400">Content-Type:</span> <span className="text-amber-300 font-semibold">{probeDiagnosis.contentType}</span></div>
+                    )}
+                    {probeDiagnosis.server && (
+                      <div><span className="text-gray-400">Server:</span> {probeDiagnosis.server}</div>
+                    )}
+                    {probeDiagnosis.activeUrl && (
+                      <div className="sm:col-span-2 truncate"><span className="text-gray-400">Resolved Endpoint:</span> {probeDiagnosis.activeUrl}</div>
+                    )}
+                  </div>
+                  <div className="mt-1.5 text-[11px] text-gray-200 font-sans">
+                    <span className="font-semibold text-white">Recommendation:</span> {probeDiagnosis.recommendation}
+                  </div>
+                </div>
+              )}
+
+              {/* Log output viewport */}
+              <div className="max-h-56 overflow-y-auto font-mono text-[11px] space-y-1 bg-[#070709] p-2.5 rounded border border-[#181824] custom-scrollbar">
+                {logs.length === 0 ? (
+                  <div className="text-gray-600 text-center py-4 font-sans text-xs">
+                    No log events recorded yet. Select a channel or run a stream probe to view real-time diagnostics.
+                  </div>
+                ) : (
+                  logs
+                    .filter(l => {
+                      if (logFilter === 'ALL') return true;
+                      if (logFilter === 'ERROR') return l.level === 'error' || l.level === 'warn';
+                      return l.category === logFilter;
+                    })
+                    .map(log => {
+                      const levelColor =
+                        log.level === 'error'
+                          ? 'text-rose-400 bg-rose-500/10 border-rose-500/20'
+                          : log.level === 'warn'
+                          ? 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+                          : log.level === 'success'
+                          ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                          : 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20';
+
+                      return (
+                        <div
+                          key={log.id}
+                          className="flex items-start gap-2 py-0.5 hover:bg-white/5 rounded px-1 group"
+                        >
+                          <span className="text-gray-500 text-[10px] shrink-0">{log.timestamp}</span>
+                          <span
+                            className={`px-1 rounded text-[9px] font-bold uppercase shrink-0 border ${levelColor}`}
+                          >
+                            {log.category}
+                          </span>
+                          <span
+                            className={`flex-1 break-words ${
+                              log.level === 'error'
+                                ? 'text-rose-300'
+                                : log.level === 'warn'
+                                ? 'text-amber-300'
+                                : log.level === 'success'
+                                ? 'text-emerald-300'
+                                : 'text-gray-300'
+                            }`}
+                          >
+                            {log.message}
+                          </span>
+                        </div>
+                      );
+                    })
+                )}
+                <div ref={logsEndRef} />
               </div>
             </div>
           )}

@@ -493,3 +493,143 @@ export function pipeLiveXtreamStream(
   }
 }
 
+/**
+ * Diagnostic tool to probe upstream live stream endpoints, headers, and status codes
+ */
+export async function diagnoseLiveStream(
+  host: string,
+  user: string,
+  pass: string,
+  streamId: string | number
+): Promise<{
+  success: boolean;
+  activeUrl?: string;
+  statusCode?: number;
+  contentType?: string;
+  server?: string;
+  latencyMs: number;
+  candidatesTested: { url: string; status: number; contentType?: string; error?: string }[];
+  recommendation: string;
+}> {
+  const cleanHost = normalizeDomain(host);
+  const rawUser = String(user).trim();
+  const rawPass = String(pass).trim();
+  const s = String(streamId).trim();
+
+  const encUser = encodeURIComponent(rawUser);
+  const encPass = encodeURIComponent(rawPass);
+  const encS = encodeURIComponent(s);
+
+  const candidates = [
+    `${cleanHost}/live/${rawUser}/${rawPass}/${s}.ts`,
+    `${cleanHost}/${rawUser}/${rawPass}/${s}`,
+    `${cleanHost}/live/${rawUser}/${rawPass}/${s}.m3u8`,
+    `${cleanHost}/live/${encUser}/${encPass}/${encS}.ts`,
+    `${cleanHost}/${encUser}/${encPass}/${encS}`,
+    `${cleanHost}/live/${encUser}/${encPass}/${encS}.m3u8`,
+    `${cleanHost}/${rawUser}/${rawPass}/${s}.ts`
+  ];
+
+  const results: { url: string; status: number; contentType?: string; error?: string }[] = [];
+  const startTime = Date.now();
+
+  for (const url of candidates) {
+    try {
+      const parsedUrl = new URL(url);
+      const isHttps = parsedUrl.protocol === 'https:';
+      const client = isHttps ? https : http;
+
+      const probeResult = await new Promise<{ status: number; contentType?: string; server?: string; location?: string }>((resolve, reject) => {
+        const req = client.request(
+          parsedUrl,
+          {
+            method: 'GET',
+            headers: {
+              'User-Agent': DEFAULT_IPTV_USER_AGENT,
+              'Range': 'bytes=0-1024',
+              'Accept': '*/*'
+            },
+            timeout: 6000,
+            rejectUnauthorized: false
+          },
+          (res) => {
+            const status = res.statusCode || 0;
+            const contentType = res.headers['content-type'] as string | undefined;
+            const server = res.headers['server'] as string | undefined;
+            const location = res.headers['location'] as string | undefined;
+            
+            // Abort reading large stream
+            res.destroy();
+            resolve({ status, contentType, server, location });
+          }
+        );
+
+        req.on('timeout', () => {
+          req.destroy();
+          reject(new Error('Connection timed out (6s)'));
+        });
+
+        req.on('error', (err) => {
+          reject(err);
+        });
+
+        req.end();
+      });
+
+      results.push({
+        url,
+        status: probeResult.status,
+        contentType: probeResult.contentType
+      });
+
+      if (probeResult.status >= 200 && probeResult.status < 400) {
+        const latencyMs = Date.now() - startTime;
+        let recommendation = 'Stream is online and responding.';
+        const ct = (probeResult.contentType || '').toLowerCase();
+
+        if (ct.includes('mpegurl') || ct.includes('m3u8') || url.endsWith('.m3u8')) {
+          recommendation = 'HLS playlist detected. The HLS Engine is recommended for playback.';
+        } else if (ct.includes('mp2t') || ct.includes('octet-stream') || url.endsWith('.ts')) {
+          recommendation = 'Raw MPEG-TS stream detected. The MPEG-TS Engine is recommended for playback.';
+        }
+
+        return {
+          success: true,
+          activeUrl: url,
+          statusCode: probeResult.status,
+          contentType: probeResult.contentType,
+          server: probeResult.server,
+          latencyMs,
+          candidatesTested: results,
+          recommendation
+        };
+      }
+    } catch (err: any) {
+      results.push({
+        url,
+        status: 0,
+        error: err.message
+      });
+    }
+  }
+
+  const latencyMs = Date.now() - startTime;
+  let recommendation = 'All candidate live stream endpoints failed or timed out.';
+  const authFails = results.some(r => r.status === 401 || r.status === 403);
+  const notFoundFails = results.every(r => r.status === 404);
+
+  if (authFails) {
+    recommendation = 'Authentication failed (401/403). The account may have expired or reached max active connections.';
+  } else if (notFoundFails) {
+    recommendation = 'Stream not found (404). This specific channel stream ID may be offline or removed by the provider.';
+  }
+
+  return {
+    success: false,
+    latencyMs,
+    candidatesTested: results,
+    recommendation
+  };
+}
+
+
