@@ -46,7 +46,6 @@ export const PricingModal: React.FC = () => {
 
   const [currentTab, setCurrentTab] = useState<'pricing' | 'activate' | 'devices' | 'admin'>(activeModalTab || 'pricing');
   const [selectedPlan, setSelectedPlan] = useState<'standard' | 'pro_vip'>('pro_vip');
-  const [okxTransferType, setOkxTransferType] = useState<'internal' | 'trc20'>('internal');
   
   // Checkout & Order State
   const [customerEmail, setCustomerEmail] = useState<string>('');
@@ -121,17 +120,8 @@ export const PricingModal: React.FC = () => {
     e.preventDefault();
     setOrderError(null);
 
-    if (!customerEmail.trim() || !customerEmail.includes('@')) {
-      setOrderError('Please provide a valid email address.');
-      return;
-    }
-
     if (!txRef.trim()) {
-      setOrderError(
-        okxTransferType === 'internal'
-          ? 'Please enter your OKX account email or Internal Transfer ID.'
-          : 'Please enter the TRON USDT (TRC-20) Transaction Hash (TxID).'
-      );
+      setOrderError('Please enter the TRON USDT (TRC-20) Transaction Hash (TxID).');
       return;
     }
 
@@ -142,11 +132,11 @@ export const PricingModal: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: customerEmail.trim(),
+          email: customerEmail.trim() || 'trc20-payer@tron.network',
           tier: selectedPlan,
-          paymentType: okxTransferType === 'internal' ? 'okx_internal' : 'okx_trc20',
+          paymentType: 'okx_trc20',
           txHash: txRef.trim(),
-          notes: `Checkout via OKX Crypto (${okxTransferType === 'internal' ? 'OKX Internal' : 'USDT TRC-20'})`,
+          notes: 'Checkout via USDT TRC-20 Network Address',
         }),
       });
 
@@ -160,7 +150,7 @@ export const PricingModal: React.FC = () => {
           await activateLicense(data.licenseKey);
         }
       } else {
-        setOrderError(data.error || 'Could not submit order. Please check details and try again.');
+        setOrderError(data.error || 'Could not verify payment. Please check TxID and try again.');
       }
     } catch (err: any) {
       setOrderError(err.message || 'Network connection failed');
@@ -486,108 +476,56 @@ export const PricingModal: React.FC = () => {
 
               </div>
 
-              {/* Payment Section (OKX Crypto Exclusive) */}
+              {/* Payment Section (Network Address Exclusive) */}
               <div className="bg-[#0A0A0C] border border-[#242428] rounded-xl p-5 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#1E1E24] pb-3">
                   <div>
                     <h4 className="text-sm font-bold text-white flex items-center gap-2">
                       <CreditCard className="w-4 h-4 text-amber-400" />
-                      Complete Payment via OKX Crypto
+                      Complete Payment via USDT Network Address
                     </h4>
                     <p className="text-xs text-gray-400">
                       Chosen Tier: <strong className="text-white">{selectedPlan === 'pro_vip' ? 'VIP Pro Multi-Device (3 Devices)' : 'Standard Pro (1 Device)'}</strong> — Price: <strong className="text-amber-400">{selectedPlan === 'pro_vip' ? '$19.99 USD' : '$9.99 USD'}</strong>
                     </p>
                   </div>
 
-                  {/* Transfer Type Selector */}
-                  <div className="flex items-center bg-[#141418] border border-[#27272F] rounded-lg p-0.5 text-xs">
-                    <button
-                      type="button"
-                      onClick={() => setOkxTransferType('internal')}
-                      className={`px-3 py-1 rounded transition-all cursor-pointer ${
-                        okxTransferType === 'internal'
-                          ? 'bg-amber-500 text-black font-bold'
-                          : 'text-gray-400 hover:text-white'
-                      }`}
-                    >
-                      OKX Internal (0 Fee)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setOkxTransferType('trc20')}
-                      className={`px-3 py-1 rounded transition-all cursor-pointer ${
-                        okxTransferType === 'trc20'
-                          ? 'bg-amber-500 text-black font-bold'
-                          : 'text-gray-400 hover:text-white'
-                      }`}
-                    >
-                      USDT TRC-20
-                    </button>
+                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 font-mono text-xs font-semibold">
+                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                    <span>TRON (TRC-20) Network</span>
                   </div>
                 </div>
 
                 {/* Transfer Details View */}
                 <div className="space-y-4">
-                  {okxTransferType === 'internal' ? (
-                    <div className="p-4 bg-[#111114] border border-[#242428] rounded-xl space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-gray-300">Recipient OKX Account / Email:</span>
-                        <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                          Zero OKX Internal Fee
-                        </span>
-                      </div>
-                      
-                      <div className="flex items-center justify-between p-3 bg-[#0A0A0C] border border-[#27272F] rounded-lg font-mono text-sm text-amber-300 font-bold select-all">
-                        <span>m.128kb@gmail.com</span>
-                        <button
-                          type="button"
-                          onClick={() => copyToClipboard('m.128kb@gmail.com', 'okx_email')}
-                          className="px-2.5 py-1 bg-[#1E1E26] hover:bg-[#2A2A35] text-gray-300 hover:text-white rounded text-xs transition-colors flex items-center gap-1 cursor-pointer"
-                        >
-                          {copiedField === 'okx_email' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                          <span>{copiedField === 'okx_email' ? 'Copied' : 'Copy'}</span>
-                        </button>
-                      </div>
-
-                      <div className="text-[11px] text-gray-400 leading-relaxed bg-[#0A0A0C]/50 p-2.5 rounded border border-[#1E1E24]">
-                        <p className="font-semibold text-gray-300 mb-1">How to pay in OKX app / website:</p>
-                        <p className="text-gray-400">
-                          1. Open <strong>OKX App</strong> ➔ <strong>Transfer / Send</strong> ➔ Select <strong>Internal Transfer (Free)</strong>.<br />
-                          2. Enter recipient email: <code className="text-amber-300 font-mono">m.128kb@gmail.com</code>.<br />
-                          3. Send amount: <strong>{selectedPlan === 'pro_vip' ? '$19.99 USD' : '$9.99 USD'}</strong>.
-                        </p>
-                      </div>
+                  <div className="p-4 bg-[#111114] border border-[#242428] rounded-xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-gray-300">Recipient USDT (TRC-20) Network Address:</span>
+                      <span className="text-[10px] font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
+                        Official Network Deposit
+                      </span>
                     </div>
-                  ) : (
-                    <div className="p-4 bg-[#111114] border border-[#242428] rounded-xl space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-gray-300">Recipient USDT TRC-20 (Tron Network) Address:</span>
-                        <span className="text-[10px] font-mono text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
-                          TRON Network
-                        </span>
-                      </div>
-                      
-                      <div className="flex items-center justify-between p-3 bg-[#0A0A0C] border border-[#27272F] rounded-lg font-mono text-xs sm:text-sm text-amber-300 font-bold select-all break-all">
-                        <span>TQEVdoX82yQsj5gS9N8p52cH2panqUHTK3</span>
-                        <button
-                          type="button"
-                          onClick={() => copyToClipboard('TQEVdoX82yQsj5gS9N8p52cH2panqUHTK3', 'usdt_trc20')}
-                          className="px-2.5 py-1 bg-[#1E1E26] hover:bg-[#2A2A35] text-gray-300 hover:text-white rounded text-xs transition-colors flex items-center gap-1 cursor-pointer flex-shrink-0 ml-2"
-                        >
-                          {copiedField === 'usdt_trc20' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                          <span>{copiedField === 'usdt_trc20' ? 'Copied' : 'Copy'}</span>
-                        </button>
-                      </div>
-
-                      <div className="text-[11px] text-gray-400 leading-relaxed bg-[#0A0A0C]/50 p-2.5 rounded border border-[#1E1E24]">
-                        <p className="font-semibold text-gray-300 mb-1">How to pay via TRC-20 On-Chain:</p>
-                        <p className="text-gray-400">
-                          1. Open <strong>OKX App</strong> ➔ <strong>Withdraw USDT</strong> ➔ Select <strong>USDT-TRC20</strong> network.<br />
-                          2. Paste the deposit address above and transfer <strong>{selectedPlan === 'pro_vip' ? '20' : '10'} USDT</strong>.
-                        </p>
-                      </div>
+                    
+                    <div className="flex items-center justify-between p-3 bg-[#0A0A0C] border border-[#27272F] rounded-lg font-mono text-xs sm:text-sm text-amber-300 font-bold select-all break-all">
+                      <span>TQEVdoX82yQsj5gS9N8p52cH2panqUHTK3</span>
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard('TQEVdoX82yQsj5gS9N8p52cH2panqUHTK3', 'usdt_trc20')}
+                        className="px-2.5 py-1 bg-[#1E1E26] hover:bg-[#2A2A35] text-gray-300 hover:text-white rounded text-xs transition-colors flex items-center gap-1 cursor-pointer flex-shrink-0 ml-2"
+                      >
+                        {copiedField === 'usdt_trc20' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedField === 'usdt_trc20' ? 'Copied' : 'Copy'}</span>
+                      </button>
                     </div>
-                  )}
+
+                    <div className="text-[11px] text-gray-400 leading-relaxed bg-[#0A0A0C]/50 p-2.5 rounded border border-[#1E1E24]">
+                      <p className="font-semibold text-gray-300 mb-1">How to pay via TRON Network:</p>
+                      <p className="text-gray-400">
+                        1. Open your crypto wallet or exchange (OKX, Binance, Trust Wallet, etc.) ➔ <strong>Withdraw / Send USDT</strong>.<br />
+                        2. Select <strong>TRC-20 (TRON)</strong> network.<br />
+                        3. Transfer <strong>{selectedPlan === 'pro_vip' ? '20' : '10'} USDT</strong> to the network address above.
+                      </p>
+                    </div>
+                  </div>
 
                   {/* Checkout & Verification Form */}
                   {orderSuccess && orderRecord ? (
@@ -626,22 +564,18 @@ export const PricingModal: React.FC = () => {
                               <span className="text-amber-300 font-bold">{orderRecord.order_id}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-gray-500">Bound Email:</span>
-                              <span>{orderRecord.email}</span>
-                            </div>
-                            <div className="flex justify-between">
                               <span className="text-gray-500">Amount:</span>
                               <span>${orderRecord.amount_usd} USD</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-gray-500">Status:</span>
                               <span className="text-amber-400 font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                                ⏳ Pending Admin Confirmation
+                                ⏳ Pending Network Confirmation
                               </span>
                             </div>
                           </div>
                           <p className="text-[11px] text-gray-400 leading-relaxed">
-                            Your payment proof has been queued for verification. As soon as the OKX transfer is confirmed by the administrator, your License Key will be issued.
+                            Your payment transaction hash has been queued. As soon as the network confirmation finishes, your License Key will be issued automatically.
                           </p>
                           <div className="flex items-center gap-2 pt-2">
                             <button
@@ -672,43 +606,18 @@ export const PricingModal: React.FC = () => {
                     <form onSubmit={handleGenerateOrder} className="pt-3 border-t border-[#1C1C21] space-y-3">
                       <div>
                         <label className="block text-xs font-semibold text-gray-300 mb-1">
-                          Your Email Address (Required):
-                        </label>
-                        <input
-                          type="email"
-                          required
-                          value={customerEmail}
-                          onChange={(e) => setCustomerEmail(e.target.value)}
-                          placeholder="you@gmail.com"
-                          className="w-full bg-[#131317] border border-[#27272F] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400 font-mono"
-                        />
-                        <span className="text-[10px] text-gray-500 mt-0.5 block">
-                          License key will be cryptographically bound to this email.
-                        </span>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-300 mb-1">
-                          {okxTransferType === 'internal'
-                            ? 'Your OKX Account Email / Internal Transfer ID (Required):'
-                            : 'TRON USDT (TRC-20) Transaction Hash / TxID (Required):'}
+                          TRON USDT (TRC-20) Transaction Hash / TxID (Required):
                         </label>
                         <input
                           type="text"
                           required
                           value={txRef}
                           onChange={(e) => setTxRef(e.target.value)}
-                          placeholder={
-                            okxTransferType === 'internal'
-                              ? 'e.g. sender@gmail.com or OKX Transfer #184920'
-                              : 'e.g. 7f9b2...84a2 (64-character TRON TxID)'
-                          }
+                          placeholder="e.g. 7f9b2...84a2 (64-character TRON TxID)"
                           className="w-full bg-[#131317] border border-[#27272F] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400 font-mono"
                         />
                         <span className="text-[10px] text-gray-500 mt-0.5 block">
-                          {okxTransferType === 'internal'
-                            ? 'Used by the owner to match the deposit in OKX.'
-                            : 'TRON blockchain hashes are automatically verified on-chain.'}
+                          TRON blockchain transaction hashes are automatically verified on-chain.
                         </span>
                       </div>
 
@@ -726,10 +635,8 @@ export const PricingModal: React.FC = () => {
                       >
                         <Zap className="w-4 h-4 fill-black" />
                         {orderProcessing
-                          ? 'Verifying Payment & Submitting...'
-                          : okxTransferType === 'trc20'
-                          ? `Verify TRON Blockchain & Activate (${selectedPlan === 'pro_vip' ? '$19.99' : '$9.99'})`
-                          : `Submit OKX Transfer Proof (${selectedPlan === 'pro_vip' ? '$19.99' : '$9.99'})`}
+                          ? 'Verifying On-Chain & Activating...'
+                          : `Verify TRON Blockchain & Activate (${selectedPlan === 'pro_vip' ? '$19.99' : '$9.99'})`}
                       </button>
                     </form>
                   )}
@@ -927,7 +834,7 @@ export const PricingModal: React.FC = () => {
 
         {/* Footer */}
         <div className="px-6 py-3 border-t border-[#1C1C21] bg-[#0A0A0C] flex flex-col sm:flex-row items-center justify-between text-xs text-gray-500 gap-2 flex-shrink-0">
-          <span>Official Recipient OKX: <strong className="text-gray-400 font-mono">m.128kb@gmail.com</strong></span>
+          <span>Official Network Deposit: <strong className="text-cyan-400 font-mono text-[11px]">TQEVdoX82yQsj5gS9N8p52cH2panqUHTK3</strong> (TRC-20)</span>
           <div className="flex items-center gap-4">
             <button
               onClick={() => setCurrentTab('activate')}

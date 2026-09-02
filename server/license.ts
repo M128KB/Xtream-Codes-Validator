@@ -318,7 +318,6 @@ export function createNewLicense(params: {
 }
 
 export const TARGET_TRC20_WALLET = 'TQEVdoX82yQsj5gS9N8p52cH2panqUHTK3';
-export const TARGET_OKX_EMAIL = 'm.128kb@gmail.com';
 
 /**
  * Verifies on-chain Tron USDT (TRC-20) transaction using TronGrid public API
@@ -403,9 +402,9 @@ export async function verifyTronTrc20Transaction(txHash: string, expectedUsd: nu
  * Submits a new payment order for verification (requires valid TxID/Memo)
  */
 export async function submitPaymentOrder(params: {
-  email: string;
+  email?: string;
   tier: 'standard' | 'pro_vip';
-  paymentType: 'okx_internal' | 'okx_trc20';
+  paymentType?: 'okx_internal' | 'okx_trc20';
   txHash: string;
   notes?: string;
 }): Promise<{
@@ -416,21 +415,16 @@ export async function submitPaymentOrder(params: {
   error?: string;
 }> {
   const db = getSystemDatabase();
-  const email = (params.email || '').trim();
   const txHash = (params.txHash || '').trim();
+  const email = (params.email || '').trim() || (txHash ? `wallet-${txHash.slice(0, 8)}@tron.network` : 'direct-payer@tron.network');
   const tier = params.tier === 'pro_vip' ? 'pro_vip' : 'standard';
   const amountUsd = tier === 'pro_vip' ? 19.99 : 9.99;
-
-  if (!email || !email.includes('@')) {
-    return { success: false, error: 'Valid email address is required.' };
-  }
+  const paymentType = params.paymentType || 'okx_trc20';
 
   if (!txHash) {
     return {
       success: false,
-      error: params.paymentType === 'okx_internal'
-        ? 'Please provide your OKX Transfer ID or sender email to verify payment.'
-        : 'Please provide the TRON USDT (TRC-20) Transaction Hash (TxID).'
+      error: 'Please provide the TRON USDT (TRC-20) Transaction Hash (TxID).'
     };
   }
 
@@ -444,23 +438,23 @@ export async function submitPaymentOrder(params: {
     return { success: false, error: 'This Transaction Hash / Reference has already been used and redeemed.' };
   }
 
-  const orderId = `OKX-${Date.now().toString(36).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
+  const orderId = `TRON-${Date.now().toString(36).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
 
-  // If TRC-20 on-chain with full hash: Attempt automatic on-chain blockchain verification!
+  // Attempt automatic on-chain blockchain verification on TRON network!
   let autoActivated = false;
   let issuedKey: string | null = null;
   let initialStatus: 'pending' | 'approved' = 'pending';
-  let verificationNote = params.notes || '';
+  let verificationNote = params.notes || 'USDT TRC-20 Network Payment';
 
-  if (params.paymentType === 'okx_trc20' && txHash.length >= 32) {
+  if (txHash.length >= 32) {
     const onChainResult = await verifyTronTrc20Transaction(txHash, amountUsd);
     if (onChainResult.valid) {
       // Blockchain confirmed! Auto-issue license key immediately
       const newLicense = createNewLicense({
         tier,
         email,
-        paymentMethod: 'okx_trc20_verified',
+        paymentMethod: 'trc20_verified',
         paymentRef: txHash,
         notes: `Auto-verified on TRON blockchain ($${onChainResult.amount} USDT from ${onChainResult.from})`
       });
@@ -482,7 +476,7 @@ export async function submitPaymentOrder(params: {
     email,
     tier,
     amountUsd,
-    params.paymentType,
+    paymentType,
     txHash,
     initialStatus,
     issuedKey,

@@ -510,7 +510,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp }) =
                 </span>
               </div>
               <p className="text-[11px] text-gray-400 font-mono">
-                /dashboard • OKX: m.128kb@gmail.com • TRC-20: TQEVdoX... panqUHTK3
+                /dashboard • TRC-20 Network Address: TQEVdoX...panqUHTK3
               </p>
             </div>
           </div>
@@ -1366,20 +1366,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp }) =
 
                 <div className="p-3 bg-[#08080A] border border-[#24242A] rounded-lg flex items-center justify-between">
                   <div>
-                    <div className="font-bold text-gray-300">Official OKX Internal Transfer Email:</div>
-                    <div className="text-amber-300 font-mono font-bold text-xs mt-0.5">m.128kb@gmail.com</div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => copyText('m.128kb@gmail.com', 'sys_email')}
-                    className="px-2.5 py-1 bg-[#1C1C24] hover:bg-[#252530] text-gray-300 rounded text-xs"
-                  >
-                    {copiedId === 'sys_email' ? 'Copied' : 'Copy'}
-                  </button>
-                </div>
-
-                <div className="p-3 bg-[#08080A] border border-[#24242A] rounded-lg flex items-center justify-between">
-                  <div>
                     <div className="font-bold text-gray-300">Official TRON USDT (TRC-20) Deposit Wallet:</div>
                     <div className="text-cyan-300 font-mono font-bold text-xs mt-0.5 break-all">
                       TQEVdoX82yQsj5gS9N8p52cH2panqUHTK3
@@ -1388,7 +1374,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp }) =
                   <button
                     type="button"
                     onClick={() => copyText('TQEVdoX82yQsj5gS9N8p52cH2panqUHTK3', 'sys_wallet')}
-                    className="px-2.5 py-1 bg-[#1C1C24] hover:bg-[#252530] text-gray-300 rounded text-xs ml-2 flex-shrink-0"
+                    className="px-2.5 py-1 bg-[#1C1C24] hover:bg-[#252530] text-gray-300 rounded text-xs ml-2 flex-shrink-0 cursor-pointer"
                   >
                     {copiedId === 'sys_wallet' ? 'Copied' : 'Copy'}
                   </button>
