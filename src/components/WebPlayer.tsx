@@ -266,13 +266,27 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
       if (playPromise !== undefined) {
         await playPromise;
         setIsPlaying(true);
+        setStreamError(null);
       }
     } catch (err: any) {
       if (
         err.name === 'AbortError' ||
-        err.name === 'NotAllowedError' ||
         err.message?.includes('interrupted')
       ) {
+        return;
+      }
+      if (err.name === 'NotAllowedError') {
+        // Browser autoplay blocked unmuted sound, try muted playback first
+        video.muted = true;
+        setIsMuted(true);
+        try {
+          await video.play();
+          setIsPlaying(true);
+          setStreamError(null);
+        } catch (_) {
+          setIsPlaying(false);
+          setStreamError('Playback paused by browser policy. Click Play to start stream.');
+        }
         return;
       }
       setIsPlaying(false);
@@ -291,10 +305,11 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
     // Fetch EPG listings
     loadEpg(stream.stream_id);
 
-    // Standard Xtream live stream proxy endpoint
-    const streamUrl = `/api/stream/live/${stream.stream_id}?host=${encodeURIComponent(activeAccount.domain)}&user=${encodeURIComponent(activeAccount.username)}&pass=${encodeURIComponent(activeAccount.password)}`;
+    const engineToUse = forceEngine || 'mpegts';
+    const ext = engineToUse === 'hls' ? '.m3u8' : '.ts';
+    const streamUrl = `/api/stream/live/${stream.stream_id}${ext}?host=${encodeURIComponent(activeAccount.domain)}&user=${encodeURIComponent(activeAccount.username)}&pass=${encodeURIComponent(activeAccount.password)}&format=${engineToUse}`;
     
-    setupLivePlayer(streamUrl, forceEngine || 'mpegts');
+    setupLivePlayer(streamUrl, engineToUse);
   };
 
   // Setup Live Stream Player with MPEG-TS / HLS Engine
@@ -311,10 +326,10 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
     }
 
     try {
-      // MPEG-TS Engine: Optimized for raw Xtream TS streams
+      // MPEG-TS Engine: Explicit 'mpegts' type for TS demuxer
       const player = mpegts.createPlayer(
         {
-          type: 'mse',
+          type: 'mpegts',
           isLive: true,
           url: srcUrl,
           hasAudio: true,
@@ -324,10 +339,10 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
         {
           enableWorker: true,
           lazyLoad: false,
-          stashInitialSize: 128,
+          stashInitialSize: 256 * 1024,
           enableStashBuffer: false,
           liveBufferLatencyChasing: true,
-          liveBufferLatencyMaxLatency: 3.0,
+          liveBufferLatencyMaxLatency: 3.5,
           liveBufferLatencyMinRemain: 0.5,
           autoCleanupSourceBuffer: true,
           autoCleanupMaxBackwardDuration: 30,
@@ -366,7 +381,12 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
           errorDetail === 'demuxError'
         ) {
           console.log('Switching to HLS fallback player engine...');
-          setupHlsPlayer(srcUrl, true);
+          if (activeAccount && activeLiveStream) {
+            const hlsUrl = `/api/stream/live/${activeLiveStream.stream_id}.m3u8?host=${encodeURIComponent(activeAccount.domain)}&user=${encodeURIComponent(activeAccount.username)}&pass=${encodeURIComponent(activeAccount.password)}&format=m3u8`;
+            setupHlsPlayer(hlsUrl, true);
+          } else {
+            setupHlsPlayer(srcUrl, true);
+          }
         } else {
           setStreamError(`Stream connecting... (Attempting auto-recovery)`);
         }
@@ -375,7 +395,12 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
       safePlay(video);
     } catch (e: any) {
       console.warn('MPEG-TS init failed, falling back to HLS:', e);
-      setupHlsPlayer(srcUrl, true);
+      if (activeAccount && activeLiveStream) {
+        const hlsUrl = `/api/stream/live/${activeLiveStream.stream_id}.m3u8?host=${encodeURIComponent(activeAccount.domain)}&user=${encodeURIComponent(activeAccount.username)}&pass=${encodeURIComponent(activeAccount.password)}&format=m3u8`;
+        setupHlsPlayer(hlsUrl, true);
+      } else {
+        setupHlsPlayer(srcUrl, true);
+      }
     }
   };
 
