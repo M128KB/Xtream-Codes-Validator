@@ -26,7 +26,8 @@ import {
 } from './server/python_bridge.js';
 import {
   fetchXtreamJson,
-  pipeStream
+  pipeStream,
+  pipeLiveXtreamStream
 } from './server/stream_proxy.js';
 import {
   verifyOrActivateLicense,
@@ -728,20 +729,45 @@ async function startServer() {
     pipeStream(streamUrl, req.headers, res);
   });
 
-  // Direct Live Stream URL Helper: /api/stream/live/:streamId.m3u8?host=...&user=...&pass=...
-  app.get(['/api/stream/live/:streamId.m3u8', '/api/stream/live/:streamId.ts', '/api/stream/live/:streamId'], (req, res) => {
-    const { streamId } = req.params;
-    const { host, user, pass, extension = 'm3u8' } = req.query;
+  // Direct Live Stream URL Helper: /api/stream/live/:streamId?host=...&user=...&pass=...
+  // Matches standard Xtream Codes live channel links: http://domain:port/username/password/channelId
+  app.get([
+    '/api/stream/live/:streamId',
+    '/api/stream/live/:streamId.m3u8',
+    '/api/stream/live/:streamId.ts'
+  ], (req, res) => {
+    let { streamId } = req.params;
+    let explicitExt: string | undefined = undefined;
+
+    if (streamId.endsWith('.m3u8')) {
+      streamId = streamId.replace(/\.m3u8$/, '');
+      explicitExt = 'm3u8';
+    } else if (streamId.endsWith('.ts')) {
+      streamId = streamId.replace(/\.ts$/, '');
+      explicitExt = 'ts';
+    }
+
+    if (req.query.extension) {
+      explicitExt = String(req.query.extension);
+    } else if (req.query.format) {
+      explicitExt = String(req.query.format);
+    }
+
+    const { host, user, pass } = req.query;
 
     if (!host || !user || !pass || !streamId) {
       return res.status(400).send('Missing host, user, pass or streamId');
     }
 
-    const cleanHost = String(host).replace(/\/+$/, '');
-    const ext = extension ? `.${extension}` : '.m3u8';
-    const target = `${cleanHost}/live/${encodeURIComponent(String(user))}/${encodeURIComponent(String(pass))}/${encodeURIComponent(streamId)}${ext}`;
-
-    pipeStream(target, req.headers, res);
+    pipeLiveXtreamStream(
+      String(host),
+      String(user),
+      String(pass),
+      streamId,
+      req.headers,
+      res,
+      explicitExt
+    );
   });
 
   // Direct VOD Movie URL Helper: /api/stream/movie/:streamId?host=...&user=...&pass=...&container=mp4

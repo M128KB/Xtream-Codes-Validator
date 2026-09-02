@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useId } from 'react';
 import Hls from 'hls.js';
+import mpegts from 'mpegts.js';
 import {
   Play,
   Pause,
@@ -23,7 +24,10 @@ import {
   Sliders,
   ShieldCheck,
   AlertTriangle,
-  FolderOpen
+  FolderOpen,
+  Copy,
+  Check,
+  Zap
 } from 'lucide-react';
 import { StreamCategory, LiveStreamItem, VodStreamItem, EpgProgram, XtreamAccount } from '../types';
 
@@ -64,18 +68,21 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
   const [loadingEpg, setLoadingEpg] = useState(false);
   const [mobileTab, setMobileTab] = useState<'channels' | 'player' | 'categories'>('player');
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
 
-  // Player controls state
+  // Player controls state & engines
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const mpegtsRef = useRef<mpegts.Player | null>(null);
   const playerContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const [playerEngine, setPlayerEngine] = useState<'mpegts' | 'hls' | 'direct'>('mpegts');
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(0.85);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [streamQuality, setStreamQuality] = useState<string>('Auto (HLS)');
   const [aspectRatio, setAspectRatio] = useState<'16:9' | '4:3' | 'cover'>('16:9');
   const [hlsStats, setHlsStats] = useState<{ bitrate?: number; resolution?: string; latency?: number }>({});
   
@@ -89,7 +96,33 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
   const userInputId = useId();
   const passInputId = useId();
 
-  // Initialize Chromecast SDK listener
+  // Teardown any active players
+  const cleanupPlayers = () => {
+    if (mpegtsRef.current) {
+      try {
+        mpegtsRef.current.pause();
+        mpegtsRef.current.unload();
+        mpegtsRef.current.detachMediaElement();
+        mpegtsRef.current.destroy();
+      } catch (_) {}
+      mpegtsRef.current = null;
+    }
+    if (hlsRef.current) {
+      try {
+        hlsRef.current.destroy();
+      } catch (_) {}
+      hlsRef.current = null;
+    }
+    if (videoRef.current) {
+      try {
+        videoRef.current.pause();
+        videoRef.current.removeAttribute('src');
+        videoRef.current.load();
+      } catch (_) {}
+    }
+  };
+
+  // Initialize Chromecast SDK listener & global cleanup
   useEffect(() => {
     const checkCast = () => {
       if (window.chrome && window.chrome.cast && window.chrome.cast.isAvailable) {
@@ -110,19 +143,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
     const timer = setTimeout(checkCast, 2000);
     return () => {
       clearTimeout(timer);
-      if (hlsRef.current) {
-        try {
-          hlsRef.current.destroy();
-        } catch (_) {}
-        hlsRef.current = null;
-      }
-      if (videoRef.current) {
-        try {
-          videoRef.current.pause();
-          videoRef.current.removeAttribute('src');
-          videoRef.current.load();
-        } catch (_) {}
-      }
+      cleanupPlayers();
     };
   }, []);
 
@@ -237,20 +258,125 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
     }
   };
 
-  // Play a Live Channel
-  const playLiveStream = (stream: LiveStreamItem) => {
+  // Safe Video Playback to prevent unhandled play interruptions
+  const safePlay = async (video: HTMLVideoElement | null) => {
+    if (!video) return;
+    try {
+      const playPromise = video.play();
+      if (playPromise !== undefined) {
+        await playPromise;
+        setIsPlaying(true);
+      }
+    } catch (err: any) {
+      if (
+        err.name === 'AbortError' ||
+        err.name === 'NotAllowedError' ||
+        err.message?.includes('interrupted')
+      ) {
+        return;
+      }
+      setIsPlaying(false);
+    }
+  };
+
+  // Play a Live Channel (Standard Xtream Codes: domain/username/password/channelId)
+  const playLiveStream = (stream: LiveStreamItem, forceEngine?: 'mpegts' | 'hls') => {
     if (!activeAccount) return;
     setActiveLiveStream(stream);
     setActiveVodStream(null);
     setStreamError(null);
     setEpgListings([]);
-    setMobileTab('player'); // Automatically switch to player view on mobile
+    setMobileTab('player');
 
     // Fetch EPG listings
     loadEpg(stream.stream_id);
 
-    const streamUrl = `/api/stream/live/${stream.stream_id}.m3u8?host=${encodeURIComponent(activeAccount.domain)}&user=${encodeURIComponent(activeAccount.username)}&pass=${encodeURIComponent(activeAccount.password)}`;
-    setupHlsPlayer(streamUrl, true);
+    // Standard Xtream live stream proxy endpoint
+    const streamUrl = `/api/stream/live/${stream.stream_id}?host=${encodeURIComponent(activeAccount.domain)}&user=${encodeURIComponent(activeAccount.username)}&pass=${encodeURIComponent(activeAccount.password)}`;
+    
+    setupLivePlayer(streamUrl, forceEngine || 'mpegts');
+  };
+
+  // Setup Live Stream Player with MPEG-TS / HLS Engine
+  const setupLivePlayer = (srcUrl: string, targetEngine: 'mpegts' | 'hls' = 'mpegts') => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    cleanupPlayers();
+    setPlayerEngine(targetEngine);
+
+    // If HLS engine is requested or if mpegts isn't supported in browser
+    if (targetEngine === 'hls' || !mpegts.isSupported()) {
+      setupHlsPlayer(srcUrl, true);
+      return;
+    }
+
+    try {
+      // MPEG-TS Engine: Optimized for raw Xtream TS streams
+      const player = mpegts.createPlayer(
+        {
+          type: 'mse',
+          isLive: true,
+          url: srcUrl,
+          hasAudio: true,
+          hasVideo: true,
+          cors: true,
+        },
+        {
+          enableWorker: true,
+          lazyLoad: false,
+          stashInitialSize: 128,
+          enableStashBuffer: false,
+          liveBufferLatencyChasing: true,
+          liveBufferLatencyMaxLatency: 3.0,
+          liveBufferLatencyMinRemain: 0.5,
+          autoCleanupSourceBuffer: true,
+          autoCleanupMaxBackwardDuration: 30,
+          autoCleanupMinBackwardDuration: 15,
+        }
+      );
+
+      mpegtsRef.current = player;
+      player.attachMediaElement(video);
+      player.load();
+
+      player.on(mpegts.Events.MEDIA_INFO, (info: any) => {
+        if (info.width && info.height) {
+          setHlsStats({
+            resolution: `${info.width}x${info.height}`,
+            bitrate: info.videoDataRate ? Math.round(info.videoDataRate * 1000) : undefined
+          });
+        }
+      });
+
+      player.on(mpegts.Events.STATISTICS_INFO, (stat: any) => {
+        if (stat.speed) {
+          setHlsStats(prev => ({
+            ...prev,
+            bitrate: stat.speed ? Math.round(stat.speed * 8 * 1024) : prev.bitrate
+          }));
+        }
+      });
+
+      player.on(mpegts.Events.ERROR, (errorType: any, errorDetail: any) => {
+        console.warn('mpegts error:', errorType, errorDetail);
+        // If mpegts encounters an error or if stream is HLS M3U8, auto-switch to HLS engine
+        if (
+          errorType === mpegts.ErrorTypes.MEDIA_ERROR ||
+          errorDetail === mpegts.ErrorDetails.FORMAT_UNSUPPORTED ||
+          errorDetail === 'demuxError'
+        ) {
+          console.log('Switching to HLS fallback player engine...');
+          setupHlsPlayer(srcUrl, true);
+        } else {
+          setStreamError(`Stream connecting... (Attempting auto-recovery)`);
+        }
+      });
+
+      safePlay(video);
+    } catch (e: any) {
+      console.warn('MPEG-TS init failed, falling back to HLS:', e);
+      setupHlsPlayer(srcUrl, true);
+    }
   };
 
   // Play a VOD Movie
@@ -260,7 +386,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
     setActiveLiveStream(null);
     setStreamError(null);
     setEpgListings([]);
-    setMobileTab('player'); // Automatically switch to player view on mobile
+    setMobileTab('player');
 
     const ext = stream.container_extension || 'mp4';
     const streamUrl = `/api/stream/vod/${stream.stream_id}?host=${encodeURIComponent(activeAccount.domain)}&user=${encodeURIComponent(activeAccount.username)}&pass=${encodeURIComponent(activeAccount.password)}&container=${ext}`;
@@ -273,53 +399,20 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
     }
   };
 
-  // Safe Video Playback to prevent "The play() request was interrupted by a new load request"
-  const safePlay = async (video: HTMLVideoElement | null) => {
-    if (!video) return;
-    try {
-      const playPromise = video.play();
-      if (playPromise !== undefined) {
-        await playPromise;
-        setIsPlaying(true);
-      }
-    } catch (err: any) {
-      // Ignore AbortError / interruptions caused by changing streams rapidly or pausing
-      if (
-        err.name === 'AbortError' ||
-        err.name === 'NotAllowedError' ||
-        err.message?.includes('interrupted') ||
-        err.message?.includes('The play() request was interrupted')
-      ) {
-        return;
-      }
-      setIsPlaying(false);
-    }
-  };
-
   // Setup HLS.js instance
   const setupHlsPlayer = (srcUrl: string, isLive: boolean) => {
     if (!videoRef.current) return;
     const video = videoRef.current;
-
-    // Destroy existing Hls instance safely
-    if (hlsRef.current) {
-      try {
-        hlsRef.current.destroy();
-      } catch (_) {}
-      hlsRef.current = null;
-    }
-
-    try {
-      video.pause();
-    } catch (_) {}
+    cleanupPlayers();
+    setPlayerEngine('hls');
 
     if (Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
-        lowLatencyMode: true,
-        backBufferLength: 90,
+        lowLatencyMode: isLive,
+        backBufferLength: isLive ? 30 : 90,
         maxBufferLength: 30,
-        maxMaxBufferLength: 60
+        maxMaxBufferLength: 60,
       });
 
       hls.loadSource(srcUrl);
@@ -351,18 +444,15 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              setStreamError('Network connection failed. Attempting auto-recovery...');
+              setStreamError('Network error. Reconnecting stream...');
               hls.startLoad();
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
-              setStreamError('Stream decoding media error. Recovering buffer...');
+              setStreamError('Media decoding error. Recovering buffer...');
               hls.recoverMediaError();
               break;
             default:
-              setStreamError(`Fatal playback error: ${data.details}`);
-              try {
-                hls.destroy();
-              } catch (_) {}
+              setStreamError(`Stream error: ${data.details}`);
               break;
           }
         }
@@ -374,7 +464,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
       video.src = srcUrl;
       safePlay(video);
     } else {
-      setStreamError('Your browser does not support HLS media playback.');
+      setStreamError('Your browser does not support HLS playback.');
     }
   };
 
@@ -382,19 +472,27 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
   const setupDirectPlayer = (srcUrl: string) => {
     if (!videoRef.current) return;
     const video = videoRef.current;
-    if (hlsRef.current) {
-      try {
-        hlsRef.current.destroy();
-      } catch (_) {}
-      hlsRef.current = null;
-    }
-
-    try {
-      video.pause();
-    } catch (_) {}
+    cleanupPlayers();
+    setPlayerEngine('direct');
 
     video.src = srcUrl;
     safePlay(video);
+  };
+
+  // Switch engine on current live stream
+  const switchLiveEngine = (newEngine: 'mpegts' | 'hls') => {
+    if (!activeLiveStream || !activeAccount) return;
+    playLiveStream(activeLiveStream, newEngine);
+  };
+
+  // Copy standard Xtream Direct Stream URL
+  const copyDirectXtreamUrl = () => {
+    if (!activeAccount || !activeLiveStream) return;
+    const cleanHost = activeAccount.domain.replace(/\/+$/, '');
+    const directUrl = `${cleanHost}/${encodeURIComponent(activeAccount.username)}/${encodeURIComponent(activeAccount.password)}/${activeLiveStream.stream_id}`;
+    navigator.clipboard.writeText(directUrl);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
   };
 
   // Handle Manual Connection
@@ -501,6 +599,9 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
 
   const activeTitle = activeLiveStream?.name || activeVodStream?.name || 'No Stream Selected';
   const activeIcon = activeLiveStream?.stream_icon || activeVodStream?.stream_icon;
+  const directXtreamLink = activeAccount && activeLiveStream
+    ? `${activeAccount.domain.replace(/\/+$/, '')}/${activeAccount.username}/${activeAccount.password}/${activeLiveStream.stream_id}`
+    : '';
 
   return (
     <div className="flex flex-col h-[calc(100vh-64px)] bg-[#0B0B0E] text-gray-200 overflow-hidden select-none">
@@ -846,16 +947,58 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
                     </span>
                   )}
                 </h2>
-                {hlsStats.resolution && (
-                  <p className="text-[10px] text-gray-400 font-mono">
-                    Quality: <span className="text-emerald-400">{hlsStats.resolution}</span> • Bitrate: <span className="text-indigo-400">{Math.round((hlsStats.bitrate || 0) / 1000)} kbps</span>
-                  </p>
-                )}
+                <div className="flex items-center gap-2 text-[10px] text-gray-400 font-mono mt-0.5">
+                  {hlsStats.resolution && (
+                    <span>
+                      Quality: <span className="text-emerald-400">{hlsStats.resolution}</span>
+                    </span>
+                  )}
+                  {hlsStats.bitrate && (
+                    <span>
+                      • Bitrate: <span className="text-indigo-400">{Math.round(hlsStats.bitrate / 1000)} kbps</span>
+                    </span>
+                  )}
+                  {activeLiveStream && (
+                    <span className="text-gray-500">
+                      • Engine: <span className="text-amber-400 font-bold uppercase">{playerEngine}</span>
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* Quick Actions (Aspect ratio & Chromecast) */}
+            {/* Quick Actions (Engine Switcher, Aspect ratio & Chromecast) */}
             <div className="flex items-center gap-2">
+              {/* Engine Switcher for Live Channels */}
+              {activeLiveStream && (
+                <div className="hidden sm:flex items-center bg-[#181820] border border-[#282834] rounded p-0.5">
+                  <button
+                    onClick={() => switchLiveEngine('mpegts')}
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors flex items-center gap-1 cursor-pointer ${
+                      playerEngine === 'mpegts'
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                    title="MPEG-TS Live Stream Engine (Default Xtream link)"
+                  >
+                    <Zap className="w-2.5 h-2.5" />
+                    <span>MPEG-TS</span>
+                  </button>
+                  <button
+                    onClick={() => switchLiveEngine('hls')}
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors flex items-center gap-1 cursor-pointer ${
+                      playerEngine === 'hls'
+                        ? 'bg-indigo-600 text-white'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                    title="HLS Manifest Engine"
+                  >
+                    <Radio className="w-2.5 h-2.5" />
+                    <span>HLS</span>
+                  </button>
+                </div>
+              )}
+
               <button
                 onClick={() => {
                   setAspectRatio(prev => prev === '16:9' ? '4:3' : prev === '4:3' ? 'cover' : '16:9');
@@ -916,18 +1059,29 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
                 <AlertTriangle className="w-10 h-10 text-rose-500 mb-2 animate-bounce" />
                 <p className="text-sm font-semibold text-white max-w-md">{streamError}</p>
                 <p className="text-xs text-gray-400 mt-1 max-w-sm">
-                  The IPTV stream might be offline, rate-limited, or requires authentication headers.
+                  Connecting to live stream or trying alternate engine...
                 </p>
-                <button
-                  onClick={() => {
-                    if (activeLiveStream) playLiveStream(activeLiveStream);
-                    else if (activeVodStream) playVodStream(activeVodStream);
-                  }}
-                  className="mt-4 px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-lg"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Retry Stream</span>
-                </button>
+                <div className="flex items-center gap-2 mt-4">
+                  <button
+                    onClick={() => {
+                      if (activeLiveStream) playLiveStream(activeLiveStream, 'mpegts');
+                      else if (activeVodStream) playVodStream(activeVodStream);
+                    }}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-lg"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Retry MPEG-TS</span>
+                  </button>
+                  {activeLiveStream && (
+                    <button
+                      onClick={() => playLiveStream(activeLiveStream, 'hls')}
+                      className="px-3 py-1.5 bg-[#1E1E26] hover:bg-[#282834] text-gray-200 border border-[#3A3A48] rounded text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Radio className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Try HLS Engine</span>
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
@@ -936,7 +1090,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 text-gray-500">
                 <Tv className="w-12 h-12 mb-2 text-gray-700" />
                 <p className="text-sm font-medium text-gray-400">Select any channel or movie from the left list to begin streaming</p>
-                <p className="text-xs text-gray-600 mt-1">Supports Live HLS (.m3u8), TS streams, VOD movies and Chromecast</p>
+                <p className="text-xs text-gray-600 mt-1">Supports Live Xtream Links (http://domain:port/user/pass/channelId), MPEG-TS, HLS and VOD</p>
               </div>
             )}
 
@@ -1012,6 +1166,28 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
               </div>
             )}
           </div>
+
+          {/* Direct Stream Xtream Link Banner (for External VLC, PotPlayer, Smart TV) */}
+          {activeLiveStream && activeAccount && (
+            <div className="bg-[#101016] border-b border-[#1E1E24] px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <span className="text-[11px] font-bold text-gray-400 uppercase shrink-0">Xtream Link:</span>
+                <code className="px-2 py-0.5 bg-[#181820] border border-[#282834] rounded text-[11px] text-indigo-300 font-mono truncate select-all flex-1 max-w-xl">
+                  {directXtreamLink}
+                </code>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={copyDirectXtreamUrl}
+                  className="px-2.5 py-1 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 rounded text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
+                  title="Copy direct Xtream link to clipboard (http://domain:port/username/password/channelId)"
+                >
+                  {copiedLink ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  <span>{copiedLink ? 'Copied' : 'Copy Xtream Link'}</span>
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Bottom Panel: Electronic Program Guide (EPG) & Channel Details */}
           <div className="flex-1 p-4 bg-[#0E0E12]">

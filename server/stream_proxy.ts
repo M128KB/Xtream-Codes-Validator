@@ -144,6 +144,11 @@ export function pipeStream(
         clientRes.setHeader('Access-Control-Allow-Headers', 'Range, Accept, Origin, Content-Type');
 
         proxyRes.pipe(clientRes);
+
+        // Cancel upstream stream if client disconnects
+        clientRes.on('close', () => {
+          proxyReq.destroy();
+        });
       }
     );
 
@@ -166,5 +171,209 @@ export function pipeStream(
       clientRes.writeHead(500, { 'Content-Type': 'text/plain' });
       clientRes.end(`Stream Exception: ${e.message}`);
     }
+  }
+}
+
+/**
+ * Robust Live Xtream Stream Proxy with candidate fallback
+ * Matches Xtream URL standard: http://domain:port/username/password/channelId
+ */
+export function pipeLiveXtreamStream(
+  host: string,
+  user: string,
+  pass: string,
+  streamId: string | number,
+  reqHeaders: http.IncomingHttpHeaders,
+  clientRes: http.ServerResponse,
+  explicitExtension?: string
+): void {
+  const cleanHost = normalizeDomain(host);
+  const u = encodeURIComponent(String(user));
+  const p = encodeURIComponent(String(pass));
+  const s = encodeURIComponent(String(streamId));
+
+  // Build candidate URLs in order of standard Xtream Codes compliance
+  const candidates: string[] = [];
+
+  if (explicitExtension === 'm3u8') {
+    candidates.push(
+      `${cleanHost}/live/${u}/${p}/${s}.m3u8`,
+      `${cleanHost}/${u}/${p}/${s}.m3u8`,
+      `${cleanHost}/${u}/${p}/${s}`,
+      `${cleanHost}/live/${u}/${p}/${s}.ts`
+    );
+  } else if (explicitExtension === 'ts') {
+    candidates.push(
+      `${cleanHost}/${u}/${p}/${s}`,
+      `${cleanHost}/live/${u}/${p}/${s}.ts`,
+      `${cleanHost}/${u}/${p}/${s}.ts`,
+      `${cleanHost}/live/${u}/${p}/${s}.m3u8`
+    );
+  } else {
+    // Standard Xtream link format: http://domain:port/username/password/channelId
+    candidates.push(
+      `${cleanHost}/${u}/${p}/${s}`,
+      `${cleanHost}/live/${u}/${p}/${s}.ts`,
+      `${cleanHost}/${u}/${p}/${s}.ts`,
+      `${cleanHost}/live/${u}/${p}/${s}`,
+      `${cleanHost}/live/${u}/${p}/${s}.m3u8`,
+      `${cleanHost}/${u}/${p}/${s}.m3u8`
+    );
+  }
+
+  tryCandidate(0);
+
+  function tryCandidate(index: number) {
+    if (index >= candidates.length) {
+      if (!clientRes.headersSent) {
+        clientRes.writeHead(404, { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' });
+        clientRes.end('Stream not found or offline on Xtream server');
+      }
+      return;
+    }
+
+    const currentUrl = candidates[index];
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(currentUrl);
+    } catch {
+      return tryCandidate(index + 1);
+    }
+
+    const isHttps = parsedUrl.protocol === 'https:';
+    const client = isHttps ? https : http;
+
+    const forwardedHeaders: Record<string, string> = {
+      'User-Agent': 'VLC/3.0.18 LibVLC/3.0.18 (IPTV Smarters Pro Exoplayer/2.18)',
+      'Accept': '*/*'
+    };
+
+    if (reqHeaders['range']) {
+      forwardedHeaders['Range'] = reqHeaders['range'];
+    }
+
+    let hasResponded = false;
+
+    const proxyReq = client.get(
+      parsedUrl,
+      {
+        headers: forwardedHeaders,
+        timeout: 15000,
+        rejectUnauthorized: false
+      },
+      (proxyRes) => {
+        hasResponded = true;
+
+        // Handle redirects (e.g., Xtream panel redirecting to load-balancer node)
+        if (proxyRes.statusCode && proxyRes.statusCode >= 300 && proxyRes.statusCode < 400 && proxyRes.headers.location) {
+          let redirectUrl = proxyRes.headers.location;
+          if (!/^https?:\/\//i.test(redirectUrl)) {
+            redirectUrl = new URL(redirectUrl, parsedUrl.origin).toString();
+          }
+          return pipeStream(redirectUrl, reqHeaders, clientRes, 'VLC/3.0.18 LibVLC/3.0.18');
+        }
+
+        // If this candidate returned 404 or 400+, try next candidate URL
+        if (proxyRes.statusCode && proxyRes.statusCode >= 400 && index < candidates.length - 1) {
+          proxyReq.destroy();
+          return tryCandidate(index + 1);
+        }
+
+        // Successfully connected!
+        clientRes.statusCode = proxyRes.statusCode || 200;
+        clientRes.statusMessage = proxyRes.statusMessage || 'OK';
+
+        // Content-Type fallback for raw Xtream TS streams
+        let contentType = proxyRes.headers['content-type'];
+        if (!contentType || contentType === 'text/plain' || contentType === 'application/octet-stream') {
+          contentType = 'video/mp2t';
+        }
+
+        clientRes.setHeader('Content-Type', contentType);
+        clientRes.setHeader('Access-Control-Allow-Origin', '*');
+        clientRes.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+        clientRes.setHeader('Access-Control-Allow-Headers', 'Range, Accept, Origin, Content-Type');
+        clientRes.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+
+        if (proxyRes.headers['content-length']) {
+          clientRes.setHeader('Content-Length', proxyRes.headers['content-length']);
+        }
+        if (proxyRes.headers['content-range']) {
+          clientRes.setHeader('Content-Range', proxyRes.headers['content-range']);
+        }
+        if (proxyRes.headers['accept-ranges']) {
+          clientRes.setHeader('Accept-Ranges', proxyRes.headers['accept-ranges']);
+        }
+
+        // Check if response is M3U8 manifest that needs URL rewriting for CORS/proxy
+        if (
+          contentType.includes('mpegurl') ||
+          contentType.includes('m3u8') ||
+          currentUrl.endsWith('.m3u8')
+        ) {
+          let manifestBody = '';
+          proxyRes.setEncoding('utf8');
+          proxyRes.on('data', (chunk) => {
+            manifestBody += chunk;
+          });
+          proxyRes.on('end', () => {
+            try {
+              // Rewrite segment lines to proxy through /api/stream/proxy?url=
+              const lines = manifestBody.split('\n');
+              const rewritten = lines.map((line) => {
+                const trimmed = line.trim();
+                if (!trimmed || trimmed.startsWith('#')) {
+                  return line;
+                }
+                // Segment URL
+                let absoluteSegmentUrl = trimmed;
+                if (!/^https?:\/\//i.test(trimmed)) {
+                  absoluteSegmentUrl = new URL(trimmed, parsedUrl.origin + parsedUrl.pathname).toString();
+                }
+                return `/api/stream/proxy?url=${encodeURIComponent(absoluteSegmentUrl)}`;
+              }).join('\n');
+
+              if (!clientRes.headersSent) {
+                clientRes.setHeader('Content-Length', Buffer.byteLength(rewritten, 'utf8'));
+                clientRes.end(rewritten);
+              }
+            } catch {
+              if (!clientRes.headersSent) {
+                clientRes.end(manifestBody);
+              }
+            }
+          });
+        } else {
+          // Direct binary stream (video/mp2t, FLV, TS, AAC)
+          proxyRes.pipe(clientRes);
+        }
+
+        // Terminate upstream connection if browser disconnects
+        clientRes.on('close', () => {
+          proxyReq.destroy();
+        });
+      }
+    );
+
+    proxyReq.on('timeout', () => {
+      proxyReq.destroy();
+      if (!hasResponded && index < candidates.length - 1) {
+        return tryCandidate(index + 1);
+      }
+      if (!clientRes.headersSent) {
+        clientRes.writeHead(504, { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' });
+        clientRes.end('Stream Gateway Timeout');
+      }
+    });
+
+    proxyReq.on('error', (err) => {
+      if (!hasResponded && index < candidates.length - 1) {
+        return tryCandidate(index + 1);
+      }
+      if (!clientRes.headersSent) {
+        clientRes.writeHead(502, { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' });
+        clientRes.end(`Stream Proxy Error: ${err.message}`);
+      }
+    });
   }
 }
