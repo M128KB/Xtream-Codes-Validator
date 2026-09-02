@@ -956,6 +956,8 @@ class XtreamValidatorApp:
                     for acc in accounts:
                         f.write(f"\"{acc['domain']}\",\"{acc['username']}\",\"{acc['password']}\",\"{acc['status']}\",\"{acc['exp_date']}\",{acc['max_connections']},\"{acc['last_checked']}\"\n")
                 else:
+                    f.write("# Xtream Codes Validator & Database Desktop - https://ais-pre-ken7kimogwkm2stztsoul5-383104743218.europe-west2.run.app\n")
+                    f.write("# Format: domain username password\n\n")
                     for acc in accounts:
                         f.write(f"{acc['domain']} {acc['username']} {acc['password']}\n")
 

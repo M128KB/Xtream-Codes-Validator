@@ -230,7 +230,8 @@ http://stream.nordic-tv.com:8000|nordic_vip|nordic_pass_332`
               password: target.password,
               timeout,
               userAgent,
-              saveToDb: autoSave && (!saveOnlyValid || true),
+              saveToDb: autoSave,
+              saveOnlyValid: saveOnlyValid,
             }),
           });
 

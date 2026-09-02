@@ -74,9 +74,13 @@ export function executePythonValidation(
 export function generateExportData(
   format: 'm3u' | 'csv' | 'txt' | 'json',
   filterStatus: string = 'Valid',
-  userId?: string
+  userId?: string,
+  appUrl?: string,
+  appName?: string
 ): { data: string; contentType: string; filename: string } {
   const accounts = getAccounts({ status: filterStatus }, userId);
+  const resolvedAppName = appName || 'Xtream Codes Validator & Database Desktop';
+  const resolvedAppUrl = appUrl || 'https://ais-pre-ken7kimogwkm2stztsoul5-383104743218.europe-west2.run.app';
 
   if (format === 'm3u') {
     let m3u = '#EXTM3U\n';
@@ -114,8 +118,8 @@ export function generateExportData(
     };
   }
 
-  // default TXT
-  let txt = `# Xtream Codes Accounts (${filterStatus})\n# Format: domain username password\n\n`;
+  // default TXT: Add app name and domain URL on the first line
+  let txt = `# ${resolvedAppName} - ${resolvedAppUrl}\n# Xtream Codes Accounts (${filterStatus})\n# Format: domain username password\n\n`;
   for (const acc of accounts) {
     txt += `${acc.domain} ${acc.username} ${acc.password}\n`;
   }

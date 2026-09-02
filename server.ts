@@ -124,7 +124,7 @@ async function startServer() {
   app.post('/api/validate-single', async (req, res) => {
     try {
       const userId = extractUserId(req);
-      const { domain, username, password, timeout, userAgent, saveToDb } = req.body;
+      const { domain, username, password, timeout, userAgent, saveToDb, saveOnlyValid } = req.body;
       if (!domain || !username || !password) {
         return res.status(400).json({ error: 'Domain, username and password are required' });
       }
@@ -135,8 +135,11 @@ async function startServer() {
       });
 
       let insertedId = null;
-      if (saveToDb || result.is_valid) {
-        insertedId = saveAccountToDb(result, userId);
+      const shouldSave = saveToDb === true || saveToDb === 'true';
+      if (shouldSave) {
+        if (!saveOnlyValid || result.is_valid) {
+          insertedId = saveAccountToDb(result, userId);
+        }
       }
 
       res.json({ ...result, dbId: insertedId });
@@ -302,7 +305,14 @@ async function startServer() {
       const userId = extractUserId(req);
       const format = (req.query.format as 'm3u' | 'csv' | 'txt' | 'json') || 'txt';
       const status = String(req.query.status || 'Valid');
-      const exportFile = generateExportData(format, status, userId);
+
+      const forwardedProto = req.headers['x-forwarded-proto'];
+      const proto = typeof forwardedProto === 'string' ? forwardedProto.split(',')[0].trim() : (req.protocol || 'https');
+      const host = req.headers['x-forwarded-host'] || req.get('host') || 'localhost:3000';
+      const appUrl = `${proto}://${host}`;
+      const appName = 'Xtream Codes Validator & Database Desktop';
+
+      const exportFile = generateExportData(format, status, userId, appUrl, appName);
 
       res.setHeader('Content-Type', exportFile.contentType);
       res.setHeader('Content-Disposition', `attachment; filename="${exportFile.filename}"`);
