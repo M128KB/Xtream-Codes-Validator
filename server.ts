@@ -806,6 +806,13 @@ async function startServer() {
     pipeStream(target, req.headers, res);
   });
 
+  // Google AdSense / AdMob Authorized Digital Sellers verification
+  app.get(['/app-ads.txt', '/ads.txt'], (req, res) => {
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.send('google.com, pub-4556361639407199, DIRECT, f08c47fec0942fa0\n');
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
