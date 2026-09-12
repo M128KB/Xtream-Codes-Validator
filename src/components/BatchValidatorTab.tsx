@@ -73,9 +73,14 @@ export const BatchValidatorTab: React.FC<BatchValidatorTabProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const stopRequestedRef = useRef<boolean>(false);
 
+  const onValidationChangeRef = useRef(onValidationStateChange);
   useEffect(() => {
-    onValidationStateChange?.(isValidating);
-  }, [isValidating, onValidationStateChange]);
+    onValidationChangeRef.current = onValidationStateChange;
+  });
+
+  useEffect(() => {
+    onValidationChangeRef.current?.(isValidating);
+  }, [isValidating]);
 
   // Parse text whenever input changes
   useEffect(() => {

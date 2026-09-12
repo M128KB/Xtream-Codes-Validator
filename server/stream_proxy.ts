@@ -214,6 +214,21 @@ export function pipeStream(
           return;
         }
 
+        // If upstream error (4xx/5xx), pass clean error status with empty body so media demuxers don't parse error HTML as video
+        if (proxyRes.statusCode && proxyRes.statusCode >= 400) {
+          if (!clientRes.headersSent) {
+            clientRes.statusCode = proxyRes.statusCode;
+            clientRes.setHeader('Access-Control-Allow-Origin', '*');
+            clientRes.setHeader('Access-Control-Expose-Headers', 'X-Error-Reason');
+            clientRes.setHeader('X-Error-Reason', `Upstream error ${proxyRes.statusCode}`);
+            clientRes.setHeader('Content-Type', 'text/plain; charset=utf-8');
+            clientRes.setHeader('Content-Length', '0');
+            clientRes.end();
+          }
+          proxyReq.destroy();
+          return;
+        }
+
         // Direct binary stream or media segment (.ts, .mp4, audio, key)
         clientRes.statusCode = proxyRes.statusCode || 200;
         clientRes.statusMessage = proxyRes.statusMessage || 'OK';
@@ -385,19 +400,33 @@ export function pipeLiveXtreamStream(
           return pipeStream(redirectUrl, reqHeaders, clientRes, DEFAULT_IPTV_USER_AGENT);
         }
 
-        // If authentication failed (401 or 403), return explicit notification
-        if (proxyRes.statusCode === 401 || proxyRes.statusCode === 403) {
-          if (!clientRes.headersSent) {
-            clientRes.writeHead(proxyRes.statusCode, { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' });
-            clientRes.end(`Upstream Xtream Authentication Failed (${proxyRes.statusCode}): Account expired, max connections reached, or invalid credentials`);
+        // If candidate returned error (4xx/5xx)
+        if (proxyRes.statusCode && proxyRes.statusCode >= 400) {
+          // Try next candidate URL if available
+          if (index < candidates.length - 1) {
+            proxyReq.destroy();
+            return tryCandidate(index + 1);
           }
-          return;
-        }
 
-        // If candidate returned 404 or other 4xx/5xx, try next candidate URL
-        if (proxyRes.statusCode && proxyRes.statusCode >= 400 && index < candidates.length - 1) {
+          // All candidates exhausted - send real error status code with empty body so demuxer does not attempt to parse error text as binary video
+          if (!clientRes.headersSent) {
+            clientRes.statusCode = proxyRes.statusCode || 502;
+            clientRes.setHeader('Access-Control-Allow-Origin', '*');
+            clientRes.setHeader('Access-Control-Expose-Headers', 'X-Error-Reason');
+            const errMsg = proxyRes.statusCode === 401 || proxyRes.statusCode === 403
+              ? `Upstream Xtream Authentication Failed (${proxyRes.statusCode}): Account expired, max connections reached, or invalid credentials`
+              : proxyRes.statusCode === 513
+              ? `Upstream Xtream Server Error (513): Connection limit reached or provider overloaded`
+              : proxyRes.statusCode === 404
+              ? `Stream Not Found (404): Channel ID ${s} is offline or removed by provider`
+              : `Upstream Xtream Stream Error (${proxyRes.statusCode})`;
+            clientRes.setHeader('X-Error-Reason', errMsg);
+            clientRes.setHeader('Content-Type', 'text/plain; charset=utf-8');
+            clientRes.setHeader('Content-Length', '0');
+            clientRes.end();
+          }
           proxyReq.destroy();
-          return tryCandidate(index + 1);
+          return;
         }
 
         const rawContentType = (proxyRes.headers['content-type'] || '').toLowerCase();
@@ -620,6 +649,8 @@ export async function diagnoseLiveStream(
 
   if (authFails) {
     recommendation = 'Authentication failed (401/403). The account may have expired or reached max active connections.';
+  } else if (results.some(r => r.status === 513)) {
+    recommendation = 'Upstream IPTV server error (513). Connection limit reached or provider refuses connection.';
   } else if (notFoundFails) {
     recommendation = 'Stream not found (404). This specific channel stream ID may be offline or removed by the provider.';
   }

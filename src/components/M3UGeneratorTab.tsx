@@ -232,8 +232,8 @@ export default function M3UGeneratorTab({
           </div>
         </div>
         <div className="flex-1 overflow-y-auto pr-2 space-y-1.5 custom-scrollbar">
-          {cats.map(c => (
-            <label key={c.category_id} className="flex items-center gap-3 p-2 hover:bg-[#1A1A22] rounded-lg cursor-pointer transition-colors group">
+          {cats.map((c, cIdx) => (
+            <label key={`${c.category_id || 'cat'}-${cIdx}`} className="flex items-center gap-3 p-2 hover:bg-[#1A1A22] rounded-lg cursor-pointer transition-colors group">
               <div className="relative flex items-center justify-center">
                 <input 
                   type="checkbox" 
@@ -276,8 +276,8 @@ export default function M3UGeneratorTab({
             className="w-full bg-[#1A1A22] border border-[#34343A] text-sm text-gray-200 rounded-lg p-2.5 outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 appearance-none cursor-pointer"
           >
             <option value="">Select a valid account...</option>
-            {accounts.map(a => (
-              <option key={a.id} value={a.id}>
+            {accounts.map((a, aIdx) => (
+              <option key={`${a.id || 'acc'}-${aIdx}`} value={a.id}>
                 {a.username} ({a.domain})
               </option>
             ))}

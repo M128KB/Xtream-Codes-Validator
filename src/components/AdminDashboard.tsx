@@ -783,8 +783,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp }) =
                   </thead>
                   <tbody className="divide-y divide-[#1C1C22]">
                     {filteredOrders.length > 0 ? (
-                      filteredOrders.map((order) => (
-                        <tr key={order.order_id} className="hover:bg-[#14141A] transition-colors">
+                      filteredOrders.map((order, oIdx) => (
+                        <tr key={`${order.order_id}-${oIdx}`} className="hover:bg-[#14141A] transition-colors">
                           
                           {/* Order ID & Date */}
                           <td className="py-3.5 px-4">
@@ -1020,10 +1020,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp }) =
                   </thead>
                   <tbody className="divide-y divide-[#1C1C22]">
                     {filteredLicenses.length > 0 ? (
-                      filteredLicenses.map((lic) => {
+                      filteredLicenses.map((lic, lIdx) => {
                         const isExpanded = !!expandedLicenses[lic.key];
                         return (
-                          <React.Fragment key={lic.key}>
+                          <React.Fragment key={`${lic.key}-${lIdx}`}>
                             <tr className={`hover:bg-[#14141A] transition-colors ${
                               isExpanded ? 'bg-[#121218]' : ''
                             }`}>
@@ -1173,9 +1173,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp }) =
 
                                     {lic.devices && lic.devices.length > 0 ? (
                                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                        {lic.devices.map((dev) => (
+                                        {lic.devices.map((dev, dIdx) => (
                                           <div
-                                            key={dev.device_hwid}
+                                            key={`${dev.device_hwid}-${dIdx}`}
                                             className="p-3 bg-[#111116] border border-[#25252F] rounded-lg flex items-center justify-between text-xs"
                                           >
                                             <div className="space-y-0.5">

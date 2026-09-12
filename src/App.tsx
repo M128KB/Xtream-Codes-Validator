@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Navbar } from './components/Navbar';
 import { BatchValidatorTab } from './components/BatchValidatorTab';
 import { DatabaseManagerTab } from './components/DatabaseManagerTab';
@@ -45,7 +45,7 @@ function AppContent() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  const fetchDbStats = async () => {
+  const fetchDbStats = useCallback(async () => {
     try {
       const res = await fetch('/api/db/stats');
       if (res.ok) {
@@ -55,11 +55,11 @@ function AppContent() {
     } catch (e) {
       console.error('Failed to fetch DB stats', e);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchDbStats();
-  }, []);
+  }, [fetchDbStats]);
 
   const handleDeleteAccount = async (id: number) => {
     try {
@@ -105,10 +105,14 @@ function AppContent() {
 
   const isPythonAllowed = isPro || isAdminAuthenticated;
 
-  const handlePlayAccount = (acc: XtreamAccount) => {
+  const handlePlayAccount = useCallback((acc: XtreamAccount) => {
     setPlayerAccount(acc);
     setActiveTab('player');
-  };
+  }, []);
+
+  const handleValidationStateChange = useCallback((validating: boolean) => {
+    setIsBatchValidating(prev => (prev !== validating ? validating : prev));
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#0A0A0C] text-[#D1D1D1] flex flex-col font-sans selection:bg-indigo-600 selection:text-white">
@@ -128,11 +132,11 @@ function AppContent() {
       <main className={`flex-1 w-full mx-auto ${activeTab === 'player' ? 'p-0' : 'max-w-7xl p-4 sm:p-6 lg:p-8'}`}>
         <div className={activeTab === 'validator' ? 'block' : 'hidden'}>
           <BatchValidatorTab
-            onAccountValidated={() => fetchDbStats()}
+            onAccountValidated={fetchDbStats}
             onRefreshDbStats={fetchDbStats}
             onOpenAccountDetail={(acc) => setInspectAccount(acc)}
             onPlayAccount={handlePlayAccount}
-            onValidationStateChange={(validating) => setIsBatchValidating(validating)}
+            onValidationStateChange={handleValidationStateChange}
           />
         </div>
 

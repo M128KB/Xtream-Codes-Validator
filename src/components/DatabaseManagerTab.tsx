@@ -641,7 +641,7 @@ export const DatabaseManagerTab: React.FC<DatabaseManagerTabProps> = ({
 
                   return (
                     <tr
-                      key={acc.id}
+                      key={acc.id ? `${acc.id}-${i}` : `acc-${i}`}
                       onClick={() => onOpenAccountDetail(acc)}
                       className={`${rowBg} hover:bg-[#1C1C21] transition-colors cursor-pointer group`}
                     >

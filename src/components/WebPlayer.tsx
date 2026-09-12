@@ -64,6 +64,16 @@ declare global {
   }
 }
 
+// Configure mpegts logger globally to route errors cleanly to custom handler
+// and prevent raw uncaught loader logs from triggering error boundaries.
+if (typeof window !== 'undefined' && (mpegts as any)?.LoggingControl) {
+  try {
+    (mpegts as any).LoggingControl.enableError = false;
+    (mpegts as any).LoggingControl.enableWarn = false;
+    (mpegts as any).LoggingControl.enableCallback = true;
+  } catch (_) {}
+}
+
 export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDatabase }) => {
   // Connection credentials state
   const [activeAccount, setActiveAccount] = useState<XtreamAccount | null>(initialAccount || null);
@@ -114,6 +124,9 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
   const hlsRef = useRef<Hls | null>(null);
   const mpegtsRef = useRef<mpegts.Player | null>(null);
   const playerContainerRef = useRef<HTMLDivElement | null>(null);
+  const fallbackAttemptedRef = useRef<boolean>(false);
+  const hlsRetryCountRef = useRef<number>(0);
+  const hlsRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [playerEngine, setPlayerEngine] = useState<'mpegts' | 'hls' | 'direct'>('mpegts');
   const [isPlaying, setIsPlaying] = useState(false);
@@ -225,10 +238,14 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
     if (showLogs && logsEndRef.current) {
       logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [logs, showLogs]);
+  }, [logs.length, showLogs]);
 
   // Teardown any active players
   const cleanupPlayers = () => {
+    if (hlsRetryTimeoutRef.current) {
+      clearTimeout(hlsRetryTimeoutRef.current);
+      hlsRetryTimeoutRef.current = null;
+    }
     if (mpegtsRef.current) {
       try {
         mpegtsRef.current.pause();
@@ -255,6 +272,16 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
 
   // Initialize Chromecast SDK listener & global cleanup
   useEffect(() => {
+    const handleMpegtsLog = (type: string, str: string) => {
+      if (type === 'error' || type === 'warn') {
+        addLog(type === 'error' ? 'error' : 'warn', 'PLAYER', `[mpegts.js] ${str}`);
+      }
+    };
+
+    if ((mpegts as any)?.LoggingControl?.addLogListener) {
+      (mpegts as any).LoggingControl.addLogListener(handleMpegtsLog);
+    }
+
     const checkCast = () => {
       if (window.chrome && window.chrome.cast && window.chrome.cast.isAvailable) {
         setIsCastAvailable(true);
@@ -274,6 +301,9 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
     const timer = setTimeout(checkCast, 2000);
     return () => {
       clearTimeout(timer);
+      if ((mpegts as any)?.LoggingControl?.removeLogListener) {
+        (mpegts as any).LoggingControl.removeLogListener(handleMpegtsLog);
+      }
       cleanupPlayers();
     };
   }, []);
@@ -282,25 +312,25 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
   useEffect(() => {
     if (initialAccount) {
       setActiveAccount(initialAccount);
-      setHostInput(initialAccount.domain);
-      setUserInput(initialAccount.username);
-      setPassInput(initialAccount.password);
+      setHostInput(initialAccount.domain || '');
+      setUserInput(initialAccount.username || '');
+      setPassInput(initialAccount.password || '');
     }
-  }, [initialAccount]);
+  }, [initialAccount?.domain, initialAccount?.username, initialAccount?.password]);
 
   // Load categories whenever active account or content type changes
   useEffect(() => {
     if (activeAccount?.domain && activeAccount?.username && activeAccount?.password) {
       loadCategories();
     }
-  }, [activeAccount, contentType]);
+  }, [activeAccount?.domain, activeAccount?.username, activeAccount?.password, contentType]);
 
   // Load stream channels when category changes
   useEffect(() => {
     if (activeAccount?.domain && activeAccount?.username && activeAccount?.password) {
       loadStreams(selectedCategoryId);
     }
-  }, [selectedCategoryId, activeAccount, contentType]);
+  }, [selectedCategoryId, activeAccount?.domain, activeAccount?.username, activeAccount?.password, contentType]);
 
   // Fetch Categories
   const loadCategories = async () => {
@@ -436,6 +466,8 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
   // Play a Live Channel (Standard Xtream Codes: domain/username/password/channelId)
   const playLiveStream = (stream: LiveStreamItem, forceEngine?: 'mpegts' | 'hls') => {
     if (!activeAccount) return;
+    fallbackAttemptedRef.current = false;
+    hlsRetryCountRef.current = 0;
     setActiveLiveStream(stream);
     setActiveVodStream(null);
     setStreamError(null);
@@ -539,15 +571,36 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
         console.warn('mpegts error:', errorType, errorDetail);
         addLog('error', 'PLAYER', `MPEG-TS Engine Error [Type: ${errorType}] [Detail: ${errorDetail}]`, errorInfo || { errorType, errorDetail });
 
-        // If mpegts encounters an error or if stream is HLS M3U8, auto-switch to HLS engine
-        if (
-          errorType === mpegts.ErrorTypes.MEDIA_ERROR ||
-          errorType === mpegts.ErrorTypes.NETWORK_ERROR ||
-          errorDetail === (mpegts.ErrorDetails as any).MEDIA_FORMAT_UNSUPPORTED ||
-          errorDetail === (mpegts.ErrorDetails as any).FORMAT_UNSUPPORTED ||
-          errorDetail === 'demuxError'
-        ) {
-          addLog('warn', 'PLAYER', 'MPEG-TS encountered error or format mismatch. Switching to fallback HLS.js engine...');
+        const httpCode = errorInfo?.code;
+
+        // Upstream auth or connection limit errors: terminate cleanly without looping
+        if (httpCode === 401 || httpCode === 403) {
+          setStreamError(`Authentication Failed (HTTP ${httpCode}): Account expired, invalid credentials, or max connections reached.`);
+          cleanupPlayers();
+          return;
+        }
+
+        if (httpCode === 513) {
+          setStreamError(`Provider Server Error (HTTP 513): Upstream IPTV server connection limit reached or stream unavailable.`);
+          cleanupPlayers();
+          return;
+        }
+
+        if (httpCode === 404) {
+          setStreamError(`Stream Not Found (HTTP 404): Channel ID is offline or removed by provider.`);
+          cleanupPlayers();
+          return;
+        }
+
+        // Only fall back to HLS on genuine media format/demux mismatches, and only once
+        const isFormatIssue =
+          errorDetail === (mpegts.ErrorDetails as any)?.MEDIA_FORMAT_UNSUPPORTED ||
+          errorDetail === (mpegts.ErrorDetails as any)?.FORMAT_UNSUPPORTED ||
+          errorDetail === 'demuxError';
+
+        if ((isFormatIssue || errorType === mpegts.ErrorTypes.MEDIA_ERROR) && !fallbackAttemptedRef.current) {
+          fallbackAttemptedRef.current = true;
+          addLog('warn', 'PLAYER', 'MPEG-TS encountered format/demux error. Switching to fallback HLS.js engine...');
           if (activeAccount && activeLiveStream) {
             const hlsUrl = toAbsoluteUrl(`/api/stream/live/${activeLiveStream.stream_id}.m3u8?host=${encodeURIComponent(activeAccount.domain)}&user=${encodeURIComponent(activeAccount.username)}&pass=${encodeURIComponent(activeAccount.password)}&format=m3u8`);
             setupHlsPlayer(hlsUrl, true);
@@ -555,7 +608,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
             setupHlsPlayer(absoluteUrl, true);
           }
         } else {
-          setStreamError(`Stream connecting... (Attempting auto-recovery)`);
+          setStreamError(`Stream playback error (${errorDetail || errorType}). Click reconnect or select another channel.`);
         }
       });
 
@@ -656,27 +709,58 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
       });
 
       hls.on(Hls.Events.ERROR, (_, data) => {
-        const httpCode = data.response?.code ? ` [HTTP ${data.response.code}]` : '';
+        const httpCode = data.response?.code;
+        const httpCodeStr = httpCode ? ` [HTTP ${httpCode}]` : '';
         const urlReq = data.context?.url ? ` [URL: ${data.context.url}]` : '';
         addLog(
           data.fatal ? 'error' : 'warn',
           'PLAYER',
-          `HLS ${data.fatal ? 'FATAL ' : ''}Error [Type: ${data.type}] [Detail: ${data.details}]${httpCode}${urlReq}`,
+          `HLS ${data.fatal ? 'FATAL ' : ''}Error [Type: ${data.type}] [Detail: ${data.details}]${httpCodeStr}${urlReq}`,
           {
             type: data.type,
             details: data.details,
             fatal: data.fatal,
-            responseCode: data.response?.code,
+            responseCode: httpCode,
             responseText: data.response?.text?.slice(0, 300)
           }
         );
 
+        // Immediate stop for non-recoverable HTTP status codes - PREVENTS INFINITE RETRY CRASH
+        if (httpCode === 401 || httpCode === 403) {
+          setStreamError(`Authentication Failed (HTTP ${httpCode}): Account expired, invalid credentials, or max connections reached.`);
+          cleanupPlayers();
+          return;
+        }
+
+        if (httpCode === 513) {
+          setStreamError(`Provider Server Error (HTTP 513): Upstream IPTV server connection limit reached.`);
+          cleanupPlayers();
+          return;
+        }
+
+        if (httpCode === 404) {
+          setStreamError(`Stream Not Found (HTTP 404): Channel playlist offline or removed by provider.`);
+          cleanupPlayers();
+          return;
+        }
+
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              setStreamError('Network error. Reconnecting stream...');
-              addLog('warn', 'PLAYER', 'Fatal Network Error: Attempting hls.startLoad() recovery...');
-              hls.startLoad();
+              if (hlsRetryCountRef.current < 2) {
+                hlsRetryCountRef.current += 1;
+                setStreamError(`Network error. Reconnecting stream (${hlsRetryCountRef.current}/2)...`);
+                addLog('warn', 'PLAYER', `Fatal Network Error: Attempting delayed recovery (${hlsRetryCountRef.current}/2)...`);
+                if (hlsRetryTimeoutRef.current) clearTimeout(hlsRetryTimeoutRef.current);
+                hlsRetryTimeoutRef.current = setTimeout(() => {
+                  if (hlsRef.current) {
+                    hlsRef.current.startLoad();
+                  }
+                }, 2000);
+              } else {
+                setStreamError('Network error: Unable to connect to stream after multiple attempts.');
+                cleanupPlayers();
+              }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
               setStreamError('Media decoding error. Recovering buffer...');
@@ -684,7 +768,8 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
               hls.recoverMediaError();
               break;
             default:
-              setStreamError(`Stream error: ${data.details}`);
+              setStreamError(`Stream playback error: ${data.details}`);
+              cleanupPlayers();
               break;
           }
         }
@@ -1030,9 +1115,9 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
               <span className="truncate">⭐ All {contentType === 'live' ? 'Channels' : 'Movies'}</span>
             </button>
 
-            {categories.map((cat) => (
+            {categories.map((cat, catIdx) => (
               <button
-                key={cat.category_id}
+                key={`${cat.category_id || 'cat'}-${catIdx}`}
                 onClick={() => {
                   setSelectedCategoryId(cat.category_id);
                   setMobileTab('channels');
@@ -1101,14 +1186,14 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
               </div>
             )}
 
-            {!loadingContent && filteredStreams.map((stream) => {
+            {!loadingContent && filteredStreams.map((stream, streamIdx) => {
               const isSelected = contentType === 'live'
                 ? activeLiveStream?.stream_id === stream.stream_id
                 : activeVodStream?.stream_id === stream.stream_id;
 
               return (
                 <div
-                  key={stream.stream_id}
+                  key={`${stream.stream_id || 'stream'}-${(stream as any).category_id || ''}-${streamIdx}`}
                   onClick={() => {
                     if (contentType === 'live') {
                       playLiveStream(stream as LiveStreamItem);
@@ -1616,7 +1701,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
                       if (logFilter === 'ERROR') return l.level === 'error' || l.level === 'warn';
                       return l.category === logFilter;
                     })
-                    .map(log => {
+                    .map((log, logIdx) => {
                       const levelColor =
                         log.level === 'error'
                           ? 'text-rose-400 bg-rose-500/10 border-rose-500/20'
@@ -1628,7 +1713,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
 
                       return (
                         <div
-                          key={log.id}
+                          key={`${log.id || 'log'}-${logIdx}`}
                           className="flex items-start gap-2 py-0.5 hover:bg-white/5 rounded px-1 group"
                         >
                           <span className="text-gray-500 text-[10px] shrink-0">{log.timestamp}</span>
@@ -1682,7 +1767,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
                 {epgListings.length > 0 ? (
                   epgListings.map((epg, idx) => (
                     <div
-                      key={epg.id || idx}
+                      key={`${epg.id || 'epg'}-${idx}`}
                       className={`p-3 rounded-lg border text-xs transition-all ${
                         idx === 0
                           ? 'bg-indigo-600/10 border-indigo-500/30 text-white'
