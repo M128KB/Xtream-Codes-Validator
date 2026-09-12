@@ -36,7 +36,9 @@ import {
   XCircle,
   ChevronDown,
   ChevronUp,
-  X
+  X,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { StreamCategory, LiveStreamItem, VodStreamItem, EpgProgram, XtreamAccount } from '../types';
 
@@ -68,6 +70,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
   const [hostInput, setHostInput] = useState(initialAccount?.domain || '');
   const [userInput, setUserInput] = useState(initialAccount?.username || '');
   const [passInput, setPassInput] = useState(initialAccount?.password || '');
+  const [showPassword, setShowPassword] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
 
   // Content state
@@ -880,15 +883,30 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
             className="px-2.5 py-1 bg-[#18181E] border border-[#2A2A34] rounded text-xs text-white focus:outline-none focus:border-indigo-500 w-28 font-mono"
             required
           />
-          <input
-            id={passInputId}
-            type="password"
-            placeholder="Password"
-            value={passInput}
-            onChange={(e) => setPassInput(e.target.value)}
-            className="px-2.5 py-1 bg-[#18181E] border border-[#2A2A34] rounded text-xs text-white focus:outline-none focus:border-indigo-500 w-28 font-mono"
-            required
-          />
+          <div className="relative flex items-center">
+            <input
+              id={passInputId}
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Password"
+              value={passInput}
+              onChange={(e) => setPassInput(e.target.value)}
+              className="pl-2.5 pr-7 py-1 bg-[#18181E] border border-[#2A2A34] rounded text-xs text-white focus:outline-none focus:border-indigo-500 w-28 sm:w-32 font-mono"
+              required
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              className="absolute right-1.5 p-0.5 text-gray-400 hover:text-gray-200 transition-colors focus:outline-none cursor-pointer"
+              title={showPassword ? 'Hide password' : 'Show password'}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+            >
+              {showPassword ? (
+                <EyeOff className="w-3.5 h-3.5" />
+              ) : (
+                <Eye className="w-3.5 h-3.5" />
+              )}
+            </button>
+          </div>
           <button
             type="submit"
             disabled={isConnecting}

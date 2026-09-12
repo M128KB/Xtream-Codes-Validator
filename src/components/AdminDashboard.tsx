@@ -473,7 +473,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp }) =
             </button>
           </form>
 
-          <div className="pt-4 border-t border-[#1C1C22] flex items-center justify-between text-xs">
+          <div className="pt-4 border-t border-[#1C1C22] flex items-center justify-start text-xs">
             <button
               type="button"
               onClick={onBackToApp}
@@ -482,7 +482,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp }) =
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>Return to Validator</span>
             </button>
-            <span className="text-[11px] text-gray-500 font-mono">Default key: 90tech</span>
           </div>
 
         </div>

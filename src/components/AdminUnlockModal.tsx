@@ -101,8 +101,7 @@ export const AdminUnlockModal: React.FC<AdminUnlockModalProps> = ({ isOpen, onCl
           </div>
         </form>
 
-        <div className="mt-4 pt-4 border-t border-[#1F1F26] flex items-center justify-between text-[11px] text-gray-500">
-          <span>Default key: <code className="text-amber-300 font-mono">90tech</code></span>
+        <div className="mt-4 pt-4 border-t border-[#1F1F26] flex items-center justify-end text-[11px] text-gray-500">
           <span>Stored in local browser</span>
         </div>
       </div>

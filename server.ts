@@ -302,11 +302,12 @@ async function startServer() {
   });
 
   // 5. Exports & Downloads (Per-User Isolated)
-  app.get('/api/export', (req, res) => {
+  app.get(['/api/export', '/api/export/preview'], (req, res) => {
     try {
       const userId = extractUserId(req);
       const format = (req.query.format as 'm3u' | 'csv' | 'txt' | 'json') || 'txt';
       const status = String(req.query.status || 'Valid');
+      const isPreview = req.path.includes('/preview') || req.query.preview === 'true' || req.query.preview === '1';
 
       const forwardedProto = req.headers['x-forwarded-proto'];
       const proto = typeof forwardedProto === 'string' ? forwardedProto.split(',')[0].trim() : (req.protocol || 'https');
@@ -315,6 +316,16 @@ async function startServer() {
       const appName = 'Xtream Codes Validator & Database Desktop';
 
       const exportFile = generateExportData(format, status, userId, appUrl, appName);
+
+      if (isPreview) {
+        return res.json({
+          data: exportFile.data,
+          filename: exportFile.filename,
+          contentType: exportFile.contentType,
+          lines: exportFile.data.split('\n').length,
+          sizeBytes: Buffer.byteLength(exportFile.data, 'utf8')
+        });
+      }
 
       res.setHeader('Content-Type', exportFile.contentType);
       res.setHeader('Content-Disposition', `attachment; filename="${exportFile.filename}"`);
