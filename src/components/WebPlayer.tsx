@@ -41,6 +41,7 @@ import {
   EyeOff
 } from 'lucide-react';
 import { StreamCategory, LiveStreamItem, VodStreamItem, EpgProgram, XtreamAccount } from '../types';
+import { useTheme } from '../context/ThemeContext';
 
 export interface StreamLogEntry {
   id: string;
@@ -75,6 +76,9 @@ if (typeof window !== 'undefined' && (mpegts as any)?.LoggingControl) {
 }
 
 export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDatabase }) => {
+  const { resolvedTheme } = useTheme();
+  const isLight = resolvedTheme === 'light';
+
   // Connection credentials state
   const [activeAccount, setActiveAccount] = useState<XtreamAccount | null>(initialAccount || null);
   const [hostInput, setHostInput] = useState(initialAccount?.domain || '');
@@ -924,25 +928,33 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
     : '';
 
   return (
-    <div className="flex flex-col h-[calc(100vh-64px)] bg-[#0B0B0E] text-gray-200 overflow-hidden select-none">
+    <div className={`flex flex-col h-[calc(100vh-64px)] overflow-hidden select-none transition-colors ${
+      isLight ? 'bg-slate-100 text-slate-800' : 'bg-[#0B0B0E] text-gray-200'
+    }`}>
       
       {/* Top Credentials & Account Switcher Bar */}
-      <div className="bg-[#121216] border-b border-[#1E1E24] px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
+      <div className={`px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0 border-b transition-colors ${
+        isLight ? 'bg-white border-slate-200 shadow-xs' : 'bg-[#121216] border-[#1E1E24]'
+      }`}>
         <div className="flex items-center gap-3">
-          <div className="p-1.5 rounded-lg bg-indigo-600/20 text-indigo-400 border border-indigo-500/30">
+          <div className={`p-1.5 rounded-lg border ${
+            isLight ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : 'bg-indigo-600/20 text-indigo-400 border-indigo-500/30'
+          }`}>
             <Radio className="w-4 h-4 animate-pulse" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-sm font-bold text-white tracking-wide">Web IPTV & VOD Player</h1>
+              <h1 className={`text-sm font-bold tracking-wide ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                Web IPTV & VOD Player
+              </h1>
               {activeAccount && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
                   Connected
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-gray-400 truncate max-w-[320px]">
+            <p className={`text-[11px] truncate max-w-[320px] ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>
               {activeAccount ? `${activeAccount.domain} (${activeAccount.username})` : 'Enter or select Xtream credentials to stream'}
             </p>
           </div>
@@ -956,7 +968,9 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
             placeholder="http://host:port"
             value={hostInput}
             onChange={(e) => setHostInput(e.target.value)}
-            className="px-2.5 py-1 bg-[#18181E] border border-[#2A2A34] rounded text-xs text-white focus:outline-none focus:border-indigo-500 w-36 sm:w-44 font-mono"
+            className={`px-2.5 py-1 rounded text-xs focus:outline-none focus:border-indigo-500 w-36 sm:w-44 font-mono border transition-colors ${
+              isLight ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:bg-white' : 'bg-[#18181E] border-[#2A2A34] text-white'
+            }`}
             required
           />
           <input
@@ -965,7 +979,9 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
             placeholder="Username"
             value={userInput}
             onChange={(e) => setUserInput(e.target.value)}
-            className="px-2.5 py-1 bg-[#18181E] border border-[#2A2A34] rounded text-xs text-white focus:outline-none focus:border-indigo-500 w-28 font-mono"
+            className={`px-2.5 py-1 rounded text-xs focus:outline-none focus:border-indigo-500 w-28 font-mono border transition-colors ${
+              isLight ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:bg-white' : 'bg-[#18181E] border-[#2A2A34] text-white'
+            }`}
             required
           />
           <div className="relative flex items-center">
@@ -975,7 +991,9 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
               placeholder="Password"
               value={passInput}
               onChange={(e) => setPassInput(e.target.value)}
-              className="pl-2.5 pr-7 py-1 bg-[#18181E] border border-[#2A2A34] rounded text-xs text-white focus:outline-none focus:border-indigo-500 w-28 sm:w-32 font-mono"
+              className={`pl-2.5 pr-7 py-1 rounded text-xs focus:outline-none focus:border-indigo-500 w-28 sm:w-32 font-mono border transition-colors ${
+                isLight ? 'bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400 focus:bg-white' : 'bg-[#18181E] border-[#2A2A34] text-white'
+              }`}
               required
             />
             <button
@@ -1005,9 +1023,11 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
             <button
               type="button"
               onClick={onBackToDatabase}
-              className="px-2.5 py-1 bg-[#1A1A22] hover:bg-[#252530] text-gray-300 rounded text-xs font-medium border border-[#2A2A34] flex items-center gap-1 transition-colors cursor-pointer"
+              className={`px-2.5 py-1 rounded text-xs font-medium border flex items-center gap-1 transition-colors cursor-pointer ${
+                isLight ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300' : 'bg-[#1A1A22] hover:bg-[#252530] text-gray-300 border-[#2A2A34]'
+              }`}
             >
-              <FolderOpen className="w-3.5 h-3.5 text-indigo-400" />
+              <FolderOpen className="w-3.5 h-3.5 text-indigo-500" />
               <span>DB Accounts</span>
             </button>
           )}
@@ -1015,13 +1035,15 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
       </div>
 
       {/* Mobile Screen Tab Navigation Bar */}
-      <div className="md:hidden bg-[#14141A] border-b border-[#24242E] px-2 py-1.5 flex items-center justify-around shrink-0 text-xs">
+      <div className={`md:hidden px-2 py-1.5 flex items-center justify-around shrink-0 text-xs border-b transition-colors ${
+        isLight ? 'bg-white border-slate-200' : 'bg-[#14141A] border-[#24242E]'
+      }`}>
         <button
           onClick={() => setMobileTab('categories')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-semibold transition-all ${
             mobileTab === 'categories'
               ? 'bg-indigo-600 text-white shadow-sm'
-              : 'text-gray-400 hover:text-white'
+              : isLight ? 'text-slate-600 hover:text-slate-900' : 'text-gray-400 hover:text-white'
           }`}
         >
           <Layers className="w-3.5 h-3.5" />
@@ -1032,7 +1054,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-semibold transition-all relative ${
             mobileTab === 'channels'
               ? 'bg-indigo-600 text-white shadow-sm'
-              : 'text-gray-400 hover:text-white'
+              : isLight ? 'text-slate-600 hover:text-slate-900' : 'text-gray-400 hover:text-white'
           }`}
         >
           <Tv className="w-3.5 h-3.5" />
@@ -1043,7 +1065,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-semibold transition-all ${
             mobileTab === 'player'
               ? 'bg-indigo-600 text-white shadow-sm'
-              : 'text-gray-400 hover:text-white'
+              : isLight ? 'text-slate-600 hover:text-slate-900' : 'text-gray-400 hover:text-white'
           }`}
         >
           <Play className="w-3.5 h-3.5 fill-current" />
@@ -1055,12 +1077,16 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
       <div className="flex-1 flex overflow-hidden relative">
         
         {/* Left Column: Mode (Live/VOD) & Category List */}
-        <div className={`w-full md:w-56 bg-[#0E0E12] md:border-r border-[#1E1E24] flex flex-col shrink-0 ${
+        <div className={`w-full md:w-56 md:border-r flex flex-col shrink-0 transition-colors ${
+          isLight ? 'bg-white border-slate-200' : 'bg-[#0E0E12] border-[#1E1E24]'
+        } ${
           mobileTab === 'categories' ? 'flex' : 'hidden md:flex'
         }`}>
           
           {/* Live vs VOD Toggle */}
-          <div className="p-2 border-b border-[#1E1E24] grid grid-cols-2 gap-1.5 bg-[#121216]">
+          <div className={`p-2 border-b grid grid-cols-2 gap-1.5 transition-colors ${
+            isLight ? 'bg-slate-100/90 border-slate-200' : 'bg-[#121216] border-[#1E1E24]'
+          }`}>
             <button
               onClick={() => {
                 setContentType('live');
@@ -1069,6 +1095,8 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
               className={`py-1.5 rounded text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                 contentType === 'live'
                   ? 'bg-indigo-600 text-white shadow-sm'
+                  : isLight
+                  ? 'text-slate-600 hover:text-slate-950 hover:bg-white'
                   : 'text-gray-400 hover:text-white hover:bg-[#181820]'
               }`}
             >
@@ -1083,6 +1111,8 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
               className={`py-1.5 rounded text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                 contentType === 'vod'
                   ? 'bg-indigo-600 text-white shadow-sm'
+                  : isLight
+                  ? 'text-slate-600 hover:text-slate-950 hover:bg-white'
                   : 'text-gray-400 hover:text-white hover:bg-[#181820]'
               }`}
             >
@@ -1092,15 +1122,21 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
           </div>
 
           {/* Categories Header */}
-          <div className="px-3 py-2 border-b border-[#1E1E24] flex items-center justify-between text-[11px] text-gray-400 font-semibold uppercase tracking-wider">
+          <div className={`px-3 py-2 border-b flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider ${
+            isLight ? 'bg-slate-50 border-slate-200 text-slate-500' : 'bg-transparent border-[#1E1E24] text-gray-400'
+          }`}>
             <span>Categories</span>
-            <span className="bg-[#1C1C24] text-gray-400 px-1.5 py-0.5 rounded text-[10px] font-mono">
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-medium ${
+              isLight ? 'bg-slate-200 text-slate-700' : 'bg-[#1C1C24] text-gray-400'
+            }`}>
               {categories.length + 1}
             </span>
           </div>
 
           {/* Category List */}
-          <div className="flex-1 overflow-y-auto divide-y divide-[#16161C] custom-scrollbar">
+          <div className={`flex-1 overflow-y-auto divide-y custom-scrollbar ${
+            isLight ? 'divide-slate-100' : 'divide-[#16161C]'
+          }`}>
             <button
               onClick={() => {
                 setSelectedCategoryId('all');
@@ -1108,7 +1144,11 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
               }}
               className={`w-full text-left px-3 py-2.5 text-xs font-medium flex items-center justify-between transition-colors cursor-pointer ${
                 selectedCategoryId === 'all'
-                  ? 'bg-indigo-600/15 text-indigo-300 font-bold border-l-2 border-indigo-500'
+                  ? isLight
+                    ? 'bg-indigo-50 text-indigo-700 font-bold border-l-2 border-indigo-600'
+                    : 'bg-indigo-600/15 text-indigo-300 font-bold border-l-2 border-indigo-500'
+                  : isLight
+                  ? 'text-slate-700 hover:bg-slate-100 hover:text-slate-950'
                   : 'text-gray-300 hover:bg-[#15151B] hover:text-white'
               }`}
             >
@@ -1124,7 +1164,11 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
                 }}
                 className={`w-full text-left px-3 py-2.5 text-xs font-medium flex items-center justify-between transition-colors cursor-pointer ${
                   selectedCategoryId === cat.category_id
-                    ? 'bg-indigo-600/15 text-indigo-300 font-bold border-l-2 border-indigo-500'
+                    ? isLight
+                      ? 'bg-indigo-50 text-indigo-700 font-bold border-l-2 border-indigo-600'
+                      : 'bg-indigo-600/15 text-indigo-300 font-bold border-l-2 border-indigo-500'
+                    : isLight
+                    ? 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                     : 'text-gray-400 hover:bg-[#15151B] hover:text-gray-200'
                 }`}
               >
@@ -1133,7 +1177,7 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
             ))}
 
             {categories.length === 0 && !loadingContent && (
-              <div className="p-4 text-center text-xs text-gray-500">
+              <div className={`p-4 text-center text-xs ${isLight ? 'text-slate-400' : 'text-gray-500'}`}>
                 {activeAccount ? 'No categories found' : 'Connect account to view'}
               </div>
             )}
@@ -1141,47 +1185,61 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
         </div>
 
         {/* Middle Column: Stream/Channel List */}
-        <div className={`w-full md:w-72 bg-[#121217] md:border-r border-[#1E1E24] flex flex-col shrink-0 ${
+        <div className={`w-full md:w-72 md:border-r flex flex-col shrink-0 transition-colors ${
+          isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#121217] border-[#1E1E24]'
+        } ${
           mobileTab === 'channels' ? 'flex' : 'hidden md:flex'
         }`}>
           
           {/* Search Box */}
-          <div className="p-2 border-b border-[#1E1E24] bg-[#0E0E12]">
+          <div className={`p-2 border-b transition-colors ${
+            isLight ? 'bg-white border-slate-200' : 'bg-[#0E0E12] border-[#1E1E24]'
+          }`}>
             <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-gray-400 pointer-events-none" />
+              <Search className={`w-3.5 h-3.5 absolute left-2.5 top-2.5 pointer-events-none ${
+                isLight ? 'text-slate-400' : 'text-gray-400'
+              }`} />
               <input
                 id={searchInputId}
                 type="text"
                 placeholder={`Search ${filteredStreams.length} items...`}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 bg-[#181820] border border-[#282834] rounded text-xs text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+                className={`w-full pl-8 pr-3 py-1.5 rounded text-xs transition-colors focus:outline-none ${
+                  isLight
+                    ? 'bg-slate-100 border border-slate-300 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-indigo-600'
+                    : 'bg-[#181820] border border-[#282834] text-white placeholder-gray-500 focus:border-indigo-500'
+                }`}
               />
             </div>
           </div>
 
           {/* List Count Status */}
-          <div className="px-3 py-1.5 border-b border-[#1E1E24] bg-[#14141B] flex items-center justify-between text-[11px] text-gray-400">
-            <span className="font-medium">
+          <div className={`px-3 py-1.5 border-b flex items-center justify-between text-[11px] ${
+            isLight ? 'bg-slate-100 border-slate-200 text-slate-600' : 'bg-[#14141B] border-[#1E1E24] text-gray-400'
+          }`}>
+            <span className="font-semibold">
               {contentType === 'live' ? 'Live Streams' : 'VOD Titles'}
             </span>
-            <span className="font-mono text-gray-400 text-[10px]">
+            <span className={`font-mono text-[10px] ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>
               {filteredStreams.length} found
             </span>
           </div>
 
           {/* Channels Scrollable View */}
-          <div className="flex-1 overflow-y-auto divide-y divide-[#181820] custom-scrollbar">
+          <div className={`flex-1 overflow-y-auto divide-y custom-scrollbar ${
+            isLight ? 'divide-slate-200' : 'divide-[#181820]'
+          }`}>
             {loadingContent && (
-              <div className="p-8 text-center text-xs text-indigo-400 flex flex-col items-center gap-2">
+              <div className="p-8 text-center text-xs text-indigo-500 flex flex-col items-center gap-2">
                 <RefreshCw className="w-5 h-5 animate-spin" />
                 <span>Loading streams...</span>
               </div>
             )}
 
             {contentError && (
-              <div className="p-3 m-2 rounded bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
+              <div className="p-3 m-2 rounded bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-300 text-xs flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
                 <span>{contentError}</span>
               </div>
             )}
@@ -1203,12 +1261,18 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
                   }}
                   className={`px-3 py-2.5 flex items-center gap-3 cursor-pointer transition-colors ${
                     isSelected
-                      ? 'bg-indigo-600/20 border-l-2 border-indigo-500 text-white'
+                      ? isLight
+                        ? 'bg-indigo-50 border-l-2 border-indigo-600 text-indigo-950 font-medium'
+                        : 'bg-indigo-600/20 border-l-2 border-indigo-500 text-white'
+                      : isLight
+                      ? 'hover:bg-slate-200/80 text-slate-800'
                       : 'hover:bg-[#181822] text-gray-300'
                   }`}
                 >
                   {/* Channel/Movie Icon */}
-                  <div className="w-8 h-8 rounded bg-[#1A1A24] border border-[#2B2B38] flex items-center justify-center shrink-0 overflow-hidden">
+                  <div className={`w-8 h-8 rounded border flex items-center justify-center shrink-0 overflow-hidden ${
+                    isLight ? 'bg-white border-slate-300 shadow-2xs' : 'bg-[#1A1A24] border-[#2B2B38]'
+                  }`}>
                     {stream.stream_icon ? (
                       <img
                         src={stream.stream_icon}
@@ -1219,19 +1283,31 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
                         }}
                       />
                     ) : (
-                      contentType === 'live' ? <Tv className="w-4 h-4 text-gray-500" /> : <Film className="w-4 h-4 text-gray-500" />
+                      contentType === 'live' ? (
+                        <Tv className={`w-4 h-4 ${isLight ? 'text-slate-400' : 'text-gray-500'}`} />
+                      ) : (
+                        <Film className={`w-4 h-4 ${isLight ? 'text-slate-400' : 'text-gray-500'}`} />
+                      )
                     )}
                   </div>
 
                   {/* Channel Title & Details */}
                   <div className="flex-1 min-w-0">
-                    <p className={`text-xs font-semibold truncate ${isSelected ? 'text-indigo-300' : 'text-gray-200'}`}>
+                    <p className={`text-xs font-semibold truncate ${
+                      isSelected
+                        ? isLight ? 'text-indigo-800' : 'text-indigo-300'
+                        : isLight ? 'text-slate-900' : 'text-gray-200'
+                    }`}>
                       {stream.name}
                     </p>
-                    <div className="flex items-center gap-2 text-[10px] text-gray-500 mt-0.5">
+                    <div className={`flex items-center gap-2 text-[10px] mt-0.5 ${
+                      isLight ? 'text-slate-500' : 'text-gray-500'
+                    }`}>
                       <span className="font-mono">ID: {stream.stream_id}</span>
                       {contentType === 'vod' && (stream as VodStreamItem).container_extension && (
-                        <span className="uppercase text-amber-400 font-semibold">
+                        <span className={`uppercase font-semibold ${
+                          isLight ? 'text-amber-700 bg-amber-100/70 px-1 rounded' : 'text-amber-400'
+                        }`}>
                           {(stream as VodStreamItem).container_extension}
                         </span>
                       )}
@@ -1240,17 +1316,19 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
 
                   {/* Play Indicator */}
                   {isSelected ? (
-                    <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                   ) : (
-                    <ChevronRight className="w-3.5 h-3.5 text-gray-600 shrink-0" />
+                    <ChevronRight className={`w-3.5 h-3.5 shrink-0 ${isLight ? 'text-slate-400' : 'text-gray-600'}`} />
                   )}
                 </div>
               );
             })}
 
             {!loadingContent && filteredStreams.length === 0 && (
-              <div className="p-8 text-center text-xs text-gray-500 flex flex-col items-center gap-2">
-                <Tv className="w-6 h-6 text-gray-600" />
+              <div className={`p-8 text-center text-xs flex flex-col items-center gap-2 ${
+                isLight ? 'text-slate-500' : 'text-gray-500'
+              }`}>
+                <Tv className={`w-6 h-6 ${isLight ? 'text-slate-400' : 'text-gray-600'}`} />
                 <span>No streams available in this category</span>
               </div>
             )}
@@ -1258,44 +1336,54 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
         </div>
 
         {/* Right Column: High Performance Video Player & EPG Schedule */}
-        <div className={`w-full flex-1 flex-col bg-[#070709] overflow-y-auto custom-scrollbar ${
+        <div className={`w-full flex-1 flex-col overflow-y-auto custom-scrollbar transition-colors ${
+          isLight ? 'bg-slate-100' : 'bg-[#070709]'
+        } ${
           mobileTab === 'player' ? 'flex' : 'hidden md:flex'
         }`}>
           
           {/* Active Stream Title Banner */}
-          <div className="bg-[#121217] border-b border-[#1E1E24] px-4 py-2.5 flex items-center justify-between shrink-0">
+          <div className={`border-b px-4 py-2.5 flex items-center justify-between shrink-0 transition-colors ${
+            isLight ? 'bg-white border-slate-200' : 'bg-[#121217] border-[#1E1E24]'
+          }`}>
             <div className="flex items-center gap-3 min-w-0">
               {activeIcon && (
                 <img
                   src={activeIcon}
                   alt={activeTitle}
-                  className="w-7 h-7 object-contain bg-[#181820] rounded p-0.5 border border-[#282834]"
+                  className={`w-7 h-7 object-contain rounded p-0.5 border ${
+                    isLight ? 'bg-slate-100 border-slate-300' : 'bg-[#181820] border-[#282834]'
+                  }`}
                   onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                 />
               )}
               <div className="min-w-0">
-                <h2 className="text-xs sm:text-sm font-bold text-white truncate flex items-center gap-2">
+                <h2 className={`text-xs sm:text-sm font-bold truncate flex items-center gap-2 ${
+                  isLight ? 'text-slate-900' : 'text-white'
+                }`}>
                   <span>{activeTitle}</span>
                   {activeLiveStream && (
-                    <span className="px-1.5 py-0.2 bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded text-[9px] font-bold uppercase tracking-wider">
+                    <span className="px-1.5 py-0.2 bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 rounded text-[9px] font-bold uppercase tracking-wider">
                       LIVE
                     </span>
                   )}
                 </h2>
-                <div className="flex items-center gap-2 text-[10px] text-gray-400 font-mono mt-0.5">
+                <div className={`flex items-center gap-2 text-[10px] font-mono mt-0.5 ${
+                  isLight ? 'text-slate-500' : 'text-gray-400'
+                }`}>
                   {hlsStats.resolution && (
                     <span>
-                      Quality: <span className="text-emerald-400">{hlsStats.resolution}</span>
+                      Quality: <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{hlsStats.resolution}</span>
                     </span>
                   )}
                   {hlsStats.bitrate && (
                     <span>
-                      • Bitrate: <span className="text-indigo-400">{Math.round(hlsStats.bitrate / 1000)} kbps</span>
+                      • Bitrate: <span className="text-indigo-600 dark:text-indigo-400">{Math.round(hlsStats.bitrate / 1000)} kbps</span>
                     </span>
                   )}
                   {activeLiveStream && (
-                    <span className="text-gray-500">
-                      • Engine: <span className="text-amber-400 font-bold uppercase">{playerEngine}</span>
+                    <span className={isLight ? 'text-slate-500' : 'text-gray-500'}>
+                      • Engine: <span className="text-amber-600 dark:text-amber-400 font-bold uppercase">{playerEngine}</span>
                     </span>
                   )}
                 </div>
@@ -1306,13 +1394,15 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
             <div className="flex items-center gap-2">
               {/* Engine Switcher for Live Channels */}
               {activeLiveStream && (
-                <div className="hidden sm:flex items-center bg-[#181820] border border-[#282834] rounded p-0.5">
+                <div className={`hidden sm:flex items-center rounded p-0.5 border ${
+                  isLight ? 'bg-slate-100 border-slate-300' : 'bg-[#181820] border-[#282834]'
+                }`}>
                   <button
                     onClick={() => switchLiveEngine('mpegts')}
                     className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors flex items-center gap-1 cursor-pointer ${
                       playerEngine === 'mpegts'
-                        ? 'bg-indigo-600 text-white'
-                        : 'text-gray-400 hover:text-white'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : isLight ? 'text-slate-600 hover:text-slate-900' : 'text-gray-400 hover:text-white'
                     }`}
                     title="MPEG-TS Live Stream Engine (Default Xtream link)"
                   >
@@ -1323,8 +1413,8 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
                     onClick={() => switchLiveEngine('hls')}
                     className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors flex items-center gap-1 cursor-pointer ${
                       playerEngine === 'hls'
-                        ? 'bg-indigo-600 text-white'
-                        : 'text-gray-400 hover:text-white'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : isLight ? 'text-slate-600 hover:text-slate-900' : 'text-gray-400 hover:text-white'
                     }`}
                     title="HLS Manifest Engine"
                   >
@@ -1340,14 +1430,18 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
                 className={`px-2.5 py-1 rounded text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer border ${
                   showLogs
                     ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-500/20'
+                    : isLight
+                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
                     : 'bg-[#181820] hover:bg-[#22222E] text-gray-300 border-[#282834]'
                 }`}
                 title="Toggle Stream Network & Player Diagnostic Logs"
               >
-                <Terminal className="w-3.5 h-3.5 text-indigo-400" />
+                <Terminal className="w-3.5 h-3.5 text-indigo-500" />
                 <span className="hidden sm:inline">Stream Logs</span>
                 {logs.length > 0 && (
-                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${showLogs ? 'bg-indigo-700 text-white' : 'bg-[#22222E] text-gray-400'}`}>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                    showLogs ? 'bg-indigo-700 text-white' : isLight ? 'bg-slate-200 text-slate-700' : 'bg-[#22222E] text-gray-400'
+                  }`}>
                     {logs.length}
                   </span>
                 )}
@@ -1357,10 +1451,14 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
                 onClick={() => {
                   setAspectRatio(prev => prev === '16:9' ? '4:3' : prev === '4:3' ? 'cover' : '16:9');
                 }}
-                className="px-2.5 py-1 bg-[#181820] hover:bg-[#22222E] text-gray-300 border border-[#282834] rounded text-xs font-mono transition-colors flex items-center gap-1 cursor-pointer"
+                className={`px-2.5 py-1 border rounded text-xs font-mono transition-colors flex items-center gap-1 cursor-pointer ${
+                  isLight
+                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                    : 'bg-[#181820] hover:bg-[#22222E] text-gray-300 border-[#282834]'
+                }`}
                 title="Aspect Ratio"
               >
-                <Sliders className="w-3 h-3 text-indigo-400" />
+                <Sliders className="w-3 h-3 text-indigo-500" />
                 <span>{aspectRatio}</span>
               </button>
 
@@ -1369,12 +1467,14 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
                 onClick={handleCast}
                 className={`px-2.5 py-1 rounded text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border ${
                   isCasting
-                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
+                    ? 'bg-amber-500/20 text-amber-500 border-amber-500/40 animate-pulse'
+                    : isLight
+                    ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
                     : 'bg-[#181820] hover:bg-[#22222E] text-gray-300 border-[#282834]'
                 }`}
                 title="Cast Stream to Smart TV / Chromecast"
               >
-                <Cast className={`w-3.5 h-3.5 ${isCasting ? 'text-amber-400' : 'text-gray-400'}`} />
+                <Cast className={`w-3.5 h-3.5 ${isCasting ? 'text-amber-500' : isLight ? 'text-slate-500' : 'text-gray-400'}`} />
                 <span>{isCasting ? 'Casting' : 'Chromecast'}</span>
               </button>
             </div>
@@ -1569,20 +1669,30 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
 
           {/* Direct Stream Xtream Link Banner (for External VLC, PotPlayer, Smart TV) */}
           {activeLiveStream && activeAccount && (
-            <div className="bg-[#101016] border-b border-[#1E1E24] px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className={`border-b px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs transition-colors ${
+              isLight ? 'bg-white border-slate-200 text-slate-700' : 'bg-[#101016] border-[#1E1E24] text-gray-300'
+            }`}>
               <div className="flex items-center gap-2 min-w-0 flex-1">
-                <span className="text-[11px] font-bold text-gray-400 uppercase shrink-0">Xtream Link:</span>
-                <code className="px-2 py-0.5 bg-[#181820] border border-[#282834] rounded text-[11px] text-indigo-300 font-mono truncate select-all flex-1 max-w-xl">
+                <span className={`text-[11px] font-bold uppercase shrink-0 ${isLight ? 'text-slate-600' : 'text-gray-400'}`}>
+                  Xtream Link:
+                </span>
+                <code className={`px-2 py-0.5 rounded text-[11px] font-mono truncate select-all flex-1 max-w-xl border ${
+                  isLight ? 'bg-slate-100 border-slate-300 text-indigo-700' : 'bg-[#181820] border-[#282834] text-indigo-300'
+                }`}>
                   {directXtreamLink}
                 </code>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={copyDirectXtreamUrl}
-                  className="px-2.5 py-1 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 rounded text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
+                  className={`px-2.5 py-1 rounded text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer transition-colors border ${
+                    isLight
+                      ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
+                      : 'bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border-indigo-500/40'
+                  }`}
                   title="Copy direct Xtream link to clipboard (http://domain:port/username/password/channelId)"
                 >
-                  {copiedLink ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  {copiedLink ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
                   <span>{copiedLink ? 'Copied' : 'Copy Xtream Link'}</span>
                 </button>
               </div>
@@ -1591,15 +1701,21 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
 
           {/* Diagnostic Stream Logs Panel (Collapsible) */}
           {showLogs && (
-            <div className="bg-[#0B0B0F] border-b border-[#1E1E28] p-3 text-xs">
+            <div className={`border-b p-3 text-xs transition-colors ${
+              isLight ? 'bg-slate-50 border-slate-200' : 'bg-[#0B0B0F] border-[#1E1E28]'
+            }`}>
               {/* Header bar */}
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1A1A24] pb-2 mb-2.5">
+              <div className={`flex flex-wrap items-center justify-between gap-2 border-b pb-2 mb-2.5 ${
+                isLight ? 'border-slate-200' : 'border-[#1A1A24]'
+              }`}>
                 <div className="flex items-center gap-2">
-                  <Terminal className="w-4 h-4 text-emerald-400" />
-                  <span className="font-bold text-white uppercase tracking-wider text-[11px]">
+                  <Terminal className="w-4 h-4 text-emerald-500" />
+                  <span className={`font-bold uppercase tracking-wider text-[11px] ${
+                    isLight ? 'text-slate-900' : 'text-white'
+                  }`}>
                     Stream Network & Engine Logs
                   </span>
-                  <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full font-mono text-[10px]">
+                  <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 rounded-full font-mono text-[10px]">
                     Live Diagnostics
                   </span>
                 </div>
@@ -1613,6 +1729,8 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
                       className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold transition-colors cursor-pointer ${
                         logFilter === f
                           ? 'bg-indigo-600 text-white'
+                          : isLight
+                          ? 'bg-slate-200 hover:bg-slate-300 text-slate-700'
                           : 'bg-[#161620] hover:bg-[#1E1E2C] text-gray-400'
                       }`}
                     >
@@ -1620,13 +1738,17 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
                     </button>
                   ))}
 
-                  <div className="h-3 w-px bg-gray-700 mx-1" />
+                  <div className={`h-3 w-px mx-1 ${isLight ? 'bg-slate-300' : 'bg-gray-700'}`} />
 
                   {/* Probe Stream Button */}
                   <button
                     onClick={() => runStreamProbe()}
                     disabled={isProbing || !activeAccount || !activeLiveStream}
-                    className="px-2.5 py-1 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50"
+                    className={`px-2.5 py-1 rounded text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-50 border ${
+                      isLight
+                        ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-300'
+                        : 'bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border-emerald-500/30'
+                    }`}
                     title="Probe all Xtream URL formats and analyze Content-Type headers"
                   >
                     <Activity className={`w-3 h-3 ${isProbing ? 'animate-spin' : ''}`} />
@@ -1636,17 +1758,25 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
                   {/* Copy Logs */}
                   <button
                     onClick={copyLogs}
-                    className="px-2 py-1 bg-[#161620] hover:bg-[#1E1E2C] text-gray-300 rounded text-[11px] flex items-center gap-1 cursor-pointer"
+                    className={`px-2 py-1 rounded text-[11px] flex items-center gap-1 cursor-pointer transition-colors ${
+                      isLight
+                        ? 'bg-slate-200 hover:bg-slate-300 text-slate-700'
+                        : 'bg-[#161620] hover:bg-[#1E1E2C] text-gray-300'
+                    }`}
                     title="Copy full diagnostic logs to clipboard"
                   >
-                    {copiedLogs ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    {copiedLogs ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
                     <span>{copiedLogs ? 'Copied' : 'Copy'}</span>
                   </button>
 
                   {/* Clear Logs */}
                   <button
                     onClick={clearLogs}
-                    className="px-2 py-1 bg-[#161620] hover:bg-rose-900/30 text-gray-400 hover:text-rose-300 rounded text-[11px] flex items-center gap-1 cursor-pointer"
+                    className={`px-2 py-1 rounded text-[11px] flex items-center gap-1 cursor-pointer transition-colors ${
+                      isLight
+                        ? 'bg-slate-200 hover:bg-rose-100 text-slate-700 hover:text-rose-600'
+                        : 'bg-[#161620] hover:bg-rose-900/30 text-gray-400 hover:text-rose-300'
+                    }`}
                     title="Clear current log entries"
                   >
                     <Trash2 className="w-3 h-3" />
@@ -1659,39 +1789,47 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
               {probeDiagnosis && (
                 <div className={`p-2.5 mb-2.5 rounded border text-[11px] leading-relaxed ${
                   probeDiagnosis.success
-                    ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-200'
+                    ? isLight
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                      : 'bg-emerald-950/20 border-emerald-500/30 text-emerald-200'
+                    : isLight
+                    ? 'bg-rose-50 border-rose-200 text-rose-900'
                     : 'bg-rose-950/20 border-rose-500/30 text-rose-200'
                 }`}>
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-bold flex items-center gap-1.5">
-                      {probeDiagnosis.success ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />}
+                      {probeDiagnosis.success ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />}
                       {probeDiagnosis.success ? 'Upstream Stream Probe: Operational' : 'Upstream Stream Probe: Failed'}
                     </span>
-                    <span className="font-mono text-[10px] text-gray-400">
+                    <span className={`font-mono text-[10px] ${isLight ? 'text-slate-600' : 'text-gray-400'}`}>
                       Response: {probeDiagnosis.latencyMs}ms | Status: {probeDiagnosis.statusCode || 'N/A'}
                     </span>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-[10px] text-gray-300 mt-1 font-mono">
+                  <div className={`grid grid-cols-1 sm:grid-cols-2 gap-1 text-[10px] mt-1 font-mono ${
+                    isLight ? 'text-slate-700' : 'text-gray-300'
+                  }`}>
                     {probeDiagnosis.contentType && (
-                      <div><span className="text-gray-400">Content-Type:</span> <span className="text-amber-300 font-semibold">{probeDiagnosis.contentType}</span></div>
+                      <div><span className={isLight ? 'text-slate-500' : 'text-gray-400'}>Content-Type:</span> <span className="text-amber-600 dark:text-amber-300 font-semibold">{probeDiagnosis.contentType}</span></div>
                     )}
                     {probeDiagnosis.server && (
-                      <div><span className="text-gray-400">Server:</span> {probeDiagnosis.server}</div>
+                      <div><span className={isLight ? 'text-slate-500' : 'text-gray-400'}>Server:</span> {probeDiagnosis.server}</div>
                     )}
                     {probeDiagnosis.activeUrl && (
-                      <div className="sm:col-span-2 truncate"><span className="text-gray-400">Resolved Endpoint:</span> {probeDiagnosis.activeUrl}</div>
+                      <div className="sm:col-span-2 truncate"><span className={isLight ? 'text-slate-500' : 'text-gray-400'}>Resolved Endpoint:</span> {probeDiagnosis.activeUrl}</div>
                     )}
                   </div>
-                  <div className="mt-1.5 text-[11px] text-gray-200 font-sans">
-                    <span className="font-semibold text-white">Recommendation:</span> {probeDiagnosis.recommendation}
+                  <div className={`mt-1.5 text-[11px] font-sans ${isLight ? 'text-slate-800' : 'text-gray-200'}`}>
+                    <span className={`font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}>Recommendation:</span> {probeDiagnosis.recommendation}
                   </div>
                 </div>
               )}
 
               {/* Log output viewport */}
-              <div className="max-h-56 overflow-y-auto font-mono text-[11px] space-y-1 bg-[#070709] p-2.5 rounded border border-[#181824] custom-scrollbar">
+              <div className={`max-h-56 overflow-y-auto font-mono text-[11px] space-y-1 p-2.5 rounded border custom-scrollbar ${
+                isLight ? 'bg-slate-900 text-slate-200 border-slate-800' : 'bg-[#070709] border-[#181824]'
+              }`}>
                 {logs.length === 0 ? (
-                  <div className="text-gray-600 text-center py-4 font-sans text-xs">
+                  <div className="text-gray-500 text-center py-4 font-sans text-xs">
                     No log events recorded yet. Select a channel or run a stream probe to view real-time diagnostics.
                   </div>
                 ) : (
@@ -1745,16 +1883,22 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
           )}
 
           {/* Bottom Panel: Electronic Program Guide (EPG) & Channel Details */}
-          <div className="flex-1 p-4 bg-[#0E0E12]">
-            <div className="flex items-center justify-between border-b border-[#1E1E24] pb-2 mb-3">
+          <div className={`flex-1 p-4 transition-colors ${
+            isLight ? 'bg-white' : 'bg-[#0E0E12]'
+          }`}>
+            <div className={`flex items-center justify-between border-b pb-2 mb-3 ${
+              isLight ? 'border-slate-200' : 'border-[#1E1E24]'
+            }`}>
               <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-indigo-400" />
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                <Clock className="w-4 h-4 text-indigo-500" />
+                <h3 className={`text-xs font-bold uppercase tracking-wider ${
+                  isLight ? 'text-slate-900' : 'text-white'
+                }`}>
                   {contentType === 'live' ? 'Live Electronic Program Guide (EPG)' : 'VOD Media Details'}
                 </h3>
               </div>
               {loadingEpg && (
-                <span className="text-[11px] text-indigo-400 flex items-center gap-1">
+                <span className="text-[11px] text-indigo-500 flex items-center gap-1">
                   <RefreshCw className="w-3 h-3 animate-spin" />
                   Updating EPG...
                 </span>
@@ -1770,32 +1914,38 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
                       key={`${epg.id || 'epg'}-${idx}`}
                       className={`p-3 rounded-lg border text-xs transition-all ${
                         idx === 0
-                          ? 'bg-indigo-600/10 border-indigo-500/30 text-white'
+                          ? isLight
+                            ? 'bg-indigo-50 border-indigo-200 text-indigo-950'
+                            : 'bg-indigo-600/10 border-indigo-500/30 text-white'
+                          : isLight
+                          ? 'bg-slate-50 border-slate-200 text-slate-800 hover:bg-slate-100'
                           : 'bg-[#14141B] border-[#1E1E26] text-gray-300'
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-2">
                           {idx === 0 && (
-                            <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 text-[10px] font-bold">
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold">
                               NOW PLAYING
                             </span>
                           )}
-                          <span className="font-bold text-gray-100">{epg.title}</span>
+                          <span className={`font-bold ${isLight ? 'text-slate-900' : 'text-gray-100'}`}>{epg.title}</span>
                         </div>
-                        <span className="text-[11px] font-mono text-gray-400">
+                        <span className={`text-[11px] font-mono ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>
                           {epg.start} - {epg.end}
                         </span>
                       </div>
                       {epg.description && (
-                        <p className="text-[11px] text-gray-400 line-clamp-2 leading-relaxed">
+                        <p className={`text-[11px] line-clamp-2 leading-relaxed ${isLight ? 'text-slate-600' : 'text-gray-400'}`}>
                           {epg.description}
                         </p>
                       )}
                     </div>
                   ))
                 ) : (
-                  <div className="p-6 rounded-lg bg-[#14141B] border border-[#1E1E24] text-center text-xs text-gray-500">
+                  <div className={`p-6 rounded-lg border text-center text-xs ${
+                    isLight ? 'bg-slate-50 border-slate-200 text-slate-500' : 'bg-[#14141B] border-[#1E1E24] text-gray-500'
+                  }`}>
                     {activeLiveStream
                       ? 'No active EPG schedule available for this channel.'
                       : 'Select a channel above to load its real-time TV program schedule.'}
@@ -1806,22 +1956,24 @@ export const WebPlayer: React.FC<WebPlayerProps> = ({ initialAccount, onBackToDa
 
             {/* VOD Metadata Info */}
             {contentType === 'vod' && activeVodStream && (
-              <div className="p-4 rounded-lg bg-[#14141B] border border-[#1E1E24] space-y-3">
+              <div className={`p-4 rounded-lg border space-y-3 ${
+                isLight ? 'bg-slate-50 border-slate-200 text-slate-800' : 'bg-[#14141B] border-[#1E1E24]'
+              }`}>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-400">Title:</span>
-                  <span className="text-xs font-bold text-white">{activeVodStream.name}</span>
+                  <span className={`text-xs ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>Title:</span>
+                  <span className={`text-xs font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>{activeVodStream.name}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-400">Stream ID:</span>
-                  <span className="text-xs font-mono text-indigo-400">{activeVodStream.stream_id}</span>
+                  <span className={`text-xs ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>Stream ID:</span>
+                  <span className={`text-xs font-mono font-semibold ${isLight ? 'text-indigo-600' : 'text-indigo-400'}`}>{activeVodStream.stream_id}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-400">Container Format:</span>
-                  <span className="text-xs font-mono uppercase text-amber-400">{activeVodStream.container_extension || 'mp4'}</span>
+                  <span className={`text-xs ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>Container Format:</span>
+                  <span className="text-xs font-mono uppercase text-amber-600 dark:text-amber-400 font-semibold">{activeVodStream.container_extension || 'mp4'}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-400">Added Date:</span>
-                  <span className="text-xs font-mono text-gray-300">{activeVodStream.added || 'N/A'}</span>
+                  <span className={`text-xs ${isLight ? 'text-slate-500' : 'text-gray-400'}`}>Added Date:</span>
+                  <span className={`text-xs font-mono ${isLight ? 'text-slate-600' : 'text-gray-300'}`}>{activeVodStream.added || 'N/A'}</span>
                 </div>
               </div>
             )}

@@ -36,6 +36,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { PaymentOrder, AdminSubscriptionStats, AdminLicenseItem } from '../types';
+import { ThemeToggle } from './ThemeToggle';
 
 interface AdminDashboardProps {
   onBackToApp: () => void;
@@ -515,6 +516,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBackToApp }) =
           </div>
 
           <div className="flex items-center gap-3">
+            <ThemeToggle variant="dropdown" />
+
             <button
               onClick={() => loadAllData()}
               disabled={loadingData}

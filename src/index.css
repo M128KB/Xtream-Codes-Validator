@@ -1,13 +1,27 @@
+@custom-variant dark (&:where(.dark, .dark *));
 @import "tailwindcss";
 
 @layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  html.light {
+    color-scheme: light;
+  }
+
   body {
     background-color: #0a0a0c;
     color: #d1d1d1;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    transition: background-color 0.15s ease, color 0.15s ease;
   }
 
-  /* Custom Sleek Dark Scrollbar */
+  /* Custom Sleek Scrollbars */
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -22,4 +36,191 @@
   ::-webkit-scrollbar-thumb:hover {
     background: #34343a;
   }
+
+  /* ----------------------------------------------------
+     LIGHT MODE THEME SYSTEM OVERRIDES
+     Transforms dark hex tokens into crisp, high-contrast light mode
+     ---------------------------------------------------- */
+  html.light body {
+    background-color: #f1f3f6;
+    color: #374151;
+  }
+
+  html.light ::-webkit-scrollbar-track {
+    background: #f1f3f6;
+  }
+  html.light ::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+  }
+  html.light ::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+
+  /* Canvas and Core App Backgrounds */
+  html.light .bg-\[\#0A0A0C\],
+  html.light .bg-\[\#0a0a0c\],
+  html.light .bg-\[\#08080A\],
+  html.light .bg-\[\#070709\],
+  html.light .bg-\[\#09090C\],
+  html.light .bg-\[\#08080B\] {
+    background-color: #f1f3f6 !important;
+  }
+
+  /* Microbars, Table Headers, Status Bars & Footers */
+  html.light .bg-\[\#0E0E11\],
+  html.light .bg-\[\#0e0e11\],
+  html.light .bg-\[\#0e0e12\],
+  html.light .bg-\[\#0A0A0D\] {
+    background-color: #f8fafc !important;
+  }
+
+  /* Cards, Modals, Dialogs, Primary Containers */
+  html.light .bg-\[\#111114\],
+  html.light .bg-\[\#111116\],
+  html.light .bg-\[\#101014\],
+  html.light .bg-\[\#101016\],
+  html.light .bg-\[\#121216\],
+  html.light .bg-\[\#141418\],
+  html.light .bg-\[\#14141A\],
+  html.light .bg-\[\#14141a\],
+  html.light .bg-\[\#14141B\],
+  html.light .bg-\[\#131317\],
+  html.light .bg-\[\#131316\] {
+    background-color: #ffffff !important;
+  }
+
+  /* Elevated Surfaces, Row Badges, Tab Containers */
+  html.light .bg-\[\#1C1C21\],
+  html.light .bg-\[\#1c1c21\],
+  html.light .bg-\[\#1A1A22\],
+  html.light .bg-\[\#1a1a22\],
+  html.light .bg-\[\#181820\],
+  html.light .bg-\[\#18181E\],
+  html.light .bg-\[\#181822\],
+  html.light .bg-\[\#161620\],
+  html.light .bg-\[\#1C1C22\],
+  html.light .bg-\[\#1C1C24\],
+  html.light .bg-\[\#22222A\],
+  html.light .bg-\[\#22222E\],
+  html.light .bg-\[\#252530\],
+  html.light .bg-\[\#26262E\],
+  html.light .bg-\[\#202028\],
+  html.light .bg-\[\#202026\],
+  html.light .bg-\[\#16161C\],
+  html.light .bg-\[\#15151B\],
+  html.light .bg-\[\#121218\],
+  html.light .bg-\[\#121217\] {
+    background-color: #f8fafc !important;
+  }
+
+  /* Light Hover States */
+  html.light .hover\:bg-\[\#1C1C21\]:hover,
+  html.light .hover\:bg-\[\#14141A\]:hover,
+  html.light .hover\:bg-\[\#1A1A22\]:hover,
+  html.light .hover\:bg-\[\#252530\]:hover,
+  html.light .hover\:bg-\[\#26262E\]:hover,
+  html.light .hover\:bg-\[\#202028\]:hover,
+  html.light .hover\:bg-\[\#22222A\]:hover {
+    background-color: #f1f5f9 !important;
+  }
+
+  /* Borders & Dividers */
+  html.light .border-\[\#242428\],
+  html.light .border-\[\#34343A\],
+  html.light .border-\[\#24242A\],
+  html.light .border-\[\#1E1E24\],
+  html.light .border-\[\#27272F\],
+  html.light .border-\[\#282834\],
+  html.light .border-\[\#222228\],
+  html.light .border-\[\#1C1C21\],
+  html.light .border-\[\#25252F\],
+  html.light .border-\[\#272730\],
+  html.light .border-\[\#27272f\],
+  html.light .border-\[\#2A2A34\],
+  html.light .border-\[\#2B2B38\],
+  html.light .border-\[\#2D2D38\],
+  html.light .border-\[\#24242E\],
+  html.light .border-\[\#1E1E26\],
+  html.light .border-\[\#1F1F26\],
+  html.light .border-\[\#181824\],
+  html.light .border-\[\#23232A\],
+  html.light .border-\[\#2A2A35\],
+  html.light .border-\[\#3A3A48\],
+  html.light .border-\[\#3A3A46\] {
+    border-color: #e2e8f0 !important;
+  }
+
+  html.light .divide-\[\#1C1C22\] > * + *,
+  html.light .divide-\[\#242428\] > * + *,
+  html.light .divide-\[\#1E1E24\] > * + * {
+    border-color: #e2e8f0 !important;
+  }
+
+  /* Text Contrast Overrides for Light Mode */
+  html.light .text-\[\#D1D1D1\] {
+    color: #374151 !important;
+  }
+
+  /* Headings & prominent text - protect colored action buttons */
+  html.light h1,
+  html.light h2,
+  html.light h3,
+  html.light h4 {
+    color: #0f172a !important;
+  }
+
+  html.light .text-white:not([class*="bg-indigo-"]):not([class*="bg-emerald-"]):not([class*="bg-rose-"]):not([class*="bg-red-"]):not([class*="bg-blue-"]):not([class*="bg-amber-"]):not([class*="bg-purple-"]):not([class*="bg-cyan-"]):not([class*="bg-black"]):not([class*="bg-gradient"]) {
+    color: #0f172a !important;
+  }
+
+  html.light [class*="bg-indigo-"] .text-white,
+  html.light [class*="bg-emerald-"] .text-white,
+  html.light [class*="bg-rose-"] .text-white,
+  html.light [class*="bg-red-"] .text-white,
+  html.light [class*="bg-blue-"] .text-white,
+  html.light [class*="bg-amber-"] .text-white,
+  html.light [class*="bg-purple-"] .text-white,
+  html.light [class*="bg-cyan-"] .text-white {
+    color: #ffffff !important;
+  }
+
+  html.light p.text-gray-400,
+  html.light span.text-gray-400,
+  html.light div.text-gray-400,
+  html.light label.text-gray-400 {
+    color: #4b5563 !important;
+  }
+
+  html.light p.text-gray-300,
+  html.light span.text-gray-300,
+  html.light div.text-gray-300,
+  html.light label.text-gray-300 {
+    color: #374151 !important;
+  }
+
+  /* Text inputs, selects, and textareas */
+  html.light input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  html.light textarea,
+  html.light select {
+    background-color: #ffffff !important;
+    border-color: #cbd5e1 !important;
+    color: #0f172a !important;
+  }
+
+  html.light input::placeholder,
+  html.light textarea::placeholder {
+    color: #94a3b8 !important;
+  }
+
+  html.light select option {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+  }
+
+  /* Retain cinematic black backdrop for Video Player */
+  html.light .aspect-video,
+  html.light video {
+    background-color: #000000 !important;
+  }
 }
+

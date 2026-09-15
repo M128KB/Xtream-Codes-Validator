@@ -12,10 +12,14 @@ import { PricingModal } from './components/PricingModal';
 import { AdminDashboard } from './components/AdminDashboard';
 import { WebPlayer } from './components/WebPlayer';
 import { LicenseProvider, useLicense } from './context/LicenseContext';
+import { ThemeProvider, useTheme } from './context/ThemeContext';
+import { ThemeToggle } from './components/ThemeToggle';
 import { XtreamAccount, DatabaseStats } from './types';
 import { Lock, Crown, KeyRound, Terminal, Sparkles } from 'lucide-react';
 
 function AppContent() {
+  const { resolvedTheme } = useTheme();
+  const isLight = resolvedTheme === 'light';
   const [currentPath, setCurrentPath] = useState<string>(() => {
     return window.location.pathname;
   });
@@ -115,7 +119,9 @@ function AppContent() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#0A0A0C] text-[#D1D1D1] flex flex-col font-sans selection:bg-indigo-600 selection:text-white">
+    <div className={`min-h-screen flex flex-col font-sans selection:bg-indigo-600 selection:text-white transition-colors duration-200 ${
+      isLight ? 'bg-slate-100 text-slate-800' : 'bg-[#0A0A0C] text-[#D1D1D1]'
+    }`}>
       {/* Top Desktop Navigation */}
       <Navbar
         activeTab={activeTab}
@@ -234,18 +240,21 @@ function AppContent() {
         </div>
       </main>
 
-      {/* Elegant Dark Footer Status Bar */}
-      <footer className="h-12 border-t border-[#242428] bg-[#0E0E11] px-6 sm:px-8 flex items-center justify-between text-[11px] text-gray-500 select-none">
-        <div className="flex items-center gap-2">
-          <span>Connected to Local SQLite DB:</span>
-          <span className="text-gray-300 font-mono">xtream_accounts.db</span>
+      {/* Elegant Footer Status Bar with Theme Controls */}
+      <footer className="h-12 border-t border-[#242428] bg-[#0E0E11] px-4 sm:px-8 flex items-center justify-between text-[11px] text-gray-500 select-none">
+        <div className="flex items-center gap-2 truncate">
+          <span className="hidden xs:inline">Connected to SQLite DB:</span>
+          <span className="text-gray-300 font-mono text-[10px] sm:text-[11px] truncate">xtream_accounts.db</span>
         </div>
-        <div className="flex items-center gap-4 uppercase tracking-widest text-[10px]">
-          <span className="hover:text-gray-300 transition-colors">M3U8 Stream Engine</span>
-          <span className="text-gray-600">•</span>
-          <span className="hover:text-gray-300 transition-colors">HWID Shield Active</span>
-          <span className="text-gray-600">•</span>
-          <span className="text-indigo-400 font-semibold">Auto-Sync On</span>
+        <div className="flex items-center gap-3 sm:gap-4 text-[10px]">
+          <div className="flex items-center gap-1.5">
+            <span className="text-gray-500 hidden md:inline">Theme:</span>
+            <ThemeToggle variant="segmented" />
+          </div>
+          <span className="text-gray-600 hidden sm:inline">•</span>
+          <span className="hover:text-gray-300 transition-colors uppercase tracking-wider hidden sm:inline">M3U8 Engine</span>
+          <span className="text-gray-600 hidden sm:inline">•</span>
+          <span className="text-indigo-400 font-semibold uppercase tracking-wider">Auto-Sync</span>
         </div>
       </footer>
 
@@ -283,9 +292,11 @@ function AppContent() {
 
 export default function App() {
   return (
-    <LicenseProvider>
-      <AppContent />
-    </LicenseProvider>
+    <ThemeProvider>
+      <LicenseProvider>
+        <AppContent />
+      </LicenseProvider>
+    </ThemeProvider>
   );
 }
 
